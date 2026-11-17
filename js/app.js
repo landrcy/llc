@@ -305,6 +305,7 @@
 
   function render() {
     applyTheme();
+    closePeek();
     document.querySelectorAll(".nav-btn").forEach(function (b) {
       b.classList.toggle("is-active", b.getAttribute("data-page") === ui.page);
     });
@@ -353,6 +354,7 @@
   }
 
   function renderCalendar() {
+    closePeek();
     const board = document.getElementById("calendar-board");
     if (ui.mode === "month") board.innerHTML = monthHTML();
     else if (ui.mode === "week") board.innerHTML = timeCalHTML("week");
@@ -443,6 +445,8 @@
     dayDates.forEach(function (d) {
       S.getOccurrencesInRange(d, d, { hiddenCats: ui.hiddenCats }).forEach(function (it) {
         if (it.allDay || !it.startTime) return;
+        /* Homework due times are deadlines, not blocks of time: they get pinned inside the frame instead of stretching it. */
+        if (it.source === "task") return;
         const a = S.minutesSinceMidnight(it.startTime);
         const b = it.endTime ? S.minutesSinceMidnight(it.endTime) : a + 60;
         if (a < start) start = Math.floor(a / 30) * 30;
@@ -541,8 +545,13 @@
       items.forEach(function (it) {
         const startMin = S.minutesSinceMidnight(it.startTime);
         const endMin = it.endTime ? S.minutesSinceMidnight(it.endTime) : startMin + 60;
-        const dur = Math.max(endMin - startMin, 15);
-        const top = yPct(startMin);
+        let dur = Math.max(endMin - startMin, 15);
+        let topMin = startMin;
+        if (it.source === "task") {
+          dur = Math.min(30, span);
+          topMin = Math.max(range.start, Math.min(startMin, range.end - dur));
+        }
+        const top = yPct(topMin);
         const height = (dur / span) * 100;
         const width = 100 / it._cols;
         const left = width * it._col;
@@ -825,6 +834,35 @@
     );
   }
 
+  function workoutOn(ds) {
+    return S.get().workouts.some(function (w) { return w.date === ds; });
+  }
+
+  /* Week at a glance: one chip per session (planned day, and a check once a workout is logged that day). */
+  function gymGlanceHTML(week) {
+    const todayStr = S.toDateStr(new Date());
+    let html = '<div class="gym-glance" role="list">';
+    GYM_SESSIONS.forEach(function (name, i) {
+      const sl = gymSlot(week, name);
+      const done = !!(sl && workoutOn(sl.date));
+      const state = !sl ? "is-empty" : done ? "is-done" : "is-planned";
+      let when = "Not set";
+      if (sl) {
+        const d = S.parseDateStr(sl.date);
+        when = sl.date === todayStr ? "Today" : S.WEEKDAYS[d.getDay()];
+        if (sl.startTime) when += " · " + S.formatGCalTime(sl.startTime);
+      }
+      const act = sl ? ' data-act="gym-edit" data-session="' + name + '" data-date="' + sl.date + '"' : "";
+      html += '<' + (sl ? 'button type="button"' : "div") + ' role="listitem" class="gg-chip ' + state + (name === "Bonus" ? " is-bonus" : "") + '" style="--i:' + i + '"' + act + ">" +
+        '<span class="gg-name">' + esc(name) + "</span>" +
+        '<span class="gg-when">' + esc(when) + "</span>" +
+        (done ? '<svg class="gg-check" viewBox="0 0 24 24" aria-label="Done"><path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>' : "") +
+        "</" + (sl ? "button" : "div") + ">";
+    });
+    html += "</div>";
+    return html;
+  }
+
   function renderGymPage() {
     const weekStart = S.startOfGymWeek(ui.gymWeek || new Date());
     const key = S.toDateStr(weekStart);
@@ -833,7 +871,8 @@
     const workouts = S.get().workouts.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
     const required = ["Push", "Pull", "Legs"].filter(function (n) { return !!gymSlot(week, n); }).length;
     const hasBonus = !!gymSlot(week, "Bonus");
-    const progress = required + "/3 this week" + (hasBonus ? " (+bonus)" : "");
+    const doneReq = ["Push", "Pull", "Legs"].filter(function (n) { const sl = gymSlot(week, n); return !!(sl && workoutOn(sl.date)); }).length;
+    const progress = required + "/3 planned" + (hasBonus ? " (+bonus)" : "") + (doneReq ? " · " + doneReq + " done" : "");
     const thisWeek = S.toDateStr(S.startOfGymWeek(new Date())) === key;
 
     let html = '<div class="page-head"><div><h2>Gym</h2></div></div>';
@@ -844,6 +883,7 @@
     html += '<div class="row-actions">';
     if (!thisWeek) html += '<button class="ghost-btn" type="button" data-act="gym-week" data-dir="0">This week</button>';
     html += '<button class="ghost-btn" type="button" data-act="gym-week" data-dir="1">Next</button></div></div>';
+    html += gymGlanceHTML(week);
 
     html += '<div class="gym-grid">';
     html += '<div></div>';
@@ -917,18 +957,44 @@
     });
     html += "</div>";
     if (!shown.length) html += '<div class="card"><p class="empty-note">Nothing in this list.</p></div>';
-    html += '<div class="card-list">';
-    shown.forEach(function (t) {
-      const overdue = !t.done && t.dueDate && t.dueDate < todayStr;
-      const cls = S.get().classes.find(function (c) { return c.id === t.classId; });
-      html += '<div class="task-row' + (t.done ? " is-done" : "") + (overdue ? " is-overdue" : "") + '">' +
-        '<input type="checkbox" data-act="toggle-task" data-id="' + esc(t.id) + '"' + (t.done ? " checked" : "") + " />" +
-        '<button class="task-main" type="button" data-act="edit-task" data-id="' + esc(t.id) + '">' +
-        '<div class="task-title">' + esc(t.title) + "</div>" +
-        '<div class="muted due">' + esc((cls ? cls.shortName || cls.name : "General") + (t.dueDate ? " · due " + S.formatDateNice(t.dueDate) : "") + (t.dueTime ? " " + S.formatTime(t.dueTime) : "")) + "</div>" +
-        "</button></div>";
+    /* Things-style due-date groups. */
+    const tomorrowStr = S.toDateStr(S.addDays(new Date(), 1));
+    const weekEnd = S.toDateStr(S.addDays(new Date(), 7));
+    const order = ["Overdue", "Today", "Tomorrow", "Next 7 days", "Later", "No due date", "Done"];
+    const groups = {};
+    shown.slice().sort(function (a, b) {
+      const ka = (a.dueDate || "9999-99-99") + (a.dueTime || "99:99"), kb = (b.dueDate || "9999-99-99") + (b.dueTime || "99:99");
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+    }).forEach(function (t) {
+      let g;
+      if (t.done) g = "Done";
+      else if (!t.dueDate) g = "No due date";
+      else if (t.dueDate < todayStr) g = "Overdue";
+      else if (t.dueDate === todayStr) g = "Today";
+      else if (t.dueDate === tomorrowStr) g = "Tomorrow";
+      else if (t.dueDate <= weekEnd) g = "Next 7 days";
+      else g = "Later";
+      (groups[g] = groups[g] || []).push(t);
     });
-    html += "</div>";
+    order.forEach(function (g) {
+      const list = groups[g];
+      if (!list) return;
+      html += '<div class="task-group' + (g === "Overdue" ? " is-overdue" : "") + '"><h3 class="tg-head">' + esc(g) + '<span class="tg-count">' + list.length + "</span></h3>";
+      html += '<div class="card-list">';
+      list.forEach(function (t) {
+        const overdue = !t.done && t.dueDate && t.dueDate < todayStr;
+        const cls = S.get().classes.find(function (c) { return c.id === t.classId; });
+        const nearGroup = g === "Today" || g === "Tomorrow";
+        const dueBit = t.dueDate ? (nearGroup ? (t.dueTime ? " · due " + S.formatTime(t.dueTime) : "") : " · due " + S.formatDateNice(t.dueDate) + (t.dueTime ? " " + S.formatTime(t.dueTime) : "")) : "";
+        html += '<div class="task-row' + (t.done ? " is-done" : "") + (overdue ? " is-overdue" : "") + '">' +
+          '<input type="checkbox" data-act="toggle-task" data-id="' + esc(t.id) + '"' + (t.done ? " checked" : "") + ' aria-label="Done" />' +
+          '<button class="task-main" type="button" data-act="edit-task" data-id="' + esc(t.id) + '">' +
+          '<div class="task-title">' + esc(t.title) + "</div>" +
+          '<div class="muted due">' + esc((cls ? cls.shortName || cls.name : "General") + dueBit) + "</div>" +
+          "</button></div>";
+      });
+      html += "</div></div>";
+    });
     document.getElementById("view-tasks").innerHTML = html;
   }
 
@@ -1373,6 +1439,114 @@
     openModal(occ.title, bits, foot, { type: "occ", occ: occ });
   }
 
+  /* ---- Pass #3: Google Calendar-style preview popover for calendar blocks ---- */
+  const peek = { open: false, id: "", at: 0 };
+
+  function canPeek(anchor) {
+    if (!anchor || !anchor.closest("#calendar-board")) return false;
+    if (window.innerWidth < 720) return false;
+    return !(window.matchMedia && window.matchMedia("(hover: none)").matches);
+  }
+
+  function peekHTML(occ) {
+    const d = S.parseDateStr(occ.date);
+    const dateBit = S.WEEKDAYS[d.getDay()] + ", " + S.MONTHS[d.getMonth()] + " " + d.getDate();
+    const when = occ.allDay || !occ.startTime ? dateBit + " · All day" : dateBit + " · " + timeLabel(occ);
+    let task = null;
+    if (occ.source === "task") task = S.get().tasks.find(function (x) { return x.id === occ.taskId; }) || null;
+    const meta = [catName(occ.categoryId)];
+    if (occ.location) meta.push(occ.location);
+    if (task) meta.push(task.done ? "Done" : "Not done");
+    let html = '<div class="pk-head"><span class="pk-sw" style="--c:' + esc(catColor(occ.categoryId)) + '"></span>' +
+      '<h3 class="pk-title">' + esc(occ.title) + "</h3>" +
+      '<button type="button" class="icon-btn pk-x" data-pk="close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>';
+    html += '<p class="pk-when">' + esc(when) + "</p>";
+    html += '<p class="pk-meta">' + esc(meta.join(" · ")) + "</p>";
+    if (occ.notes) html += '<p class="pk-notes">' + esc(occ.notes) + "</p>";
+    html += '<div class="pk-actions">';
+    if (task) {
+      html += '<button class="ghost-btn" type="button" data-act="toggle-task" data-id="' + esc(task.id) + '">' + (task.done ? "Mark not done" : "Mark done") + "</button>";
+      html += '<button class="primary-btn" type="button" data-act="edit-task" data-id="' + esc(task.id) + '">Edit</button>';
+    } else if (occ.source === "class") {
+      html += '<button class="ghost-btn" type="button" data-act="skip-occ" data-kind="class" data-id="' + esc(occ.classId) + '" data-date="' + esc(occ.date) + '">Skip this day</button>';
+      html += '<button class="primary-btn" type="button" data-act="edit-class" data-id="' + esc(occ.classId) + '">Edit class</button>';
+    } else if (occ.source === "gym") {
+      html += '<button class="ghost-btn" type="button" data-act="skip-occ" data-kind="gym" data-date="' + esc(occ.date) + '">Skip this day</button>';
+      html += '<button class="primary-btn" type="button" data-act="log-workout" data-date="' + esc(occ.date) + '" data-name="' + esc(occ.title) + '">Log workout</button>';
+    } else if (occ.source === "event") {
+      html += '<button class="ghost-btn" type="button" data-act="skip-occ" data-kind="event" data-id="' + esc(occ.eventId) + '" data-date="' + esc(occ.date) + '">Skip this day</button>';
+      html += '<button class="primary-btn" type="button" data-act="edit-event" data-id="' + esc(occ.eventId) + '">Edit event</button>';
+    } else {
+      html += '<button class="primary-btn" type="button" data-pk="details">Details</button>';
+    }
+    html += "</div>";
+    return html;
+  }
+
+  function placePeek(anchor) {
+    const el = document.getElementById("peek");
+    const r = anchor.getBoundingClientRect();
+    const w = el.offsetWidth, h = el.offsetHeight;
+    const vw = window.innerWidth, vh = window.innerHeight, gap = 10;
+    let left, origin;
+    if (r.right + gap + w <= vw - 8) { left = r.right + gap; origin = "left"; }
+    else if (r.left - gap - w >= 8) { left = r.left - gap - w; origin = "right"; }
+    else { left = Math.max(8, Math.min(r.left, vw - w - 8)); origin = "center"; }
+    const top = Math.max(64, Math.min(r.top, vh - h - 12));
+    el.style.left = Math.round(left) + "px";
+    el.style.top = Math.round(top) + "px";
+    el.style.transformOrigin = origin + " top";
+  }
+
+  function openPeek(id, anchor) {
+    const occ = findOcc(id);
+    if (!occ) return;
+    if (peek.open && peek.id === id) { closePeek(); return; }
+    closePicker();
+    const el = document.getElementById("peek");
+    el.innerHTML = peekHTML(occ);
+    el.hidden = false;
+    peek.open = true;
+    peek.id = id;
+    peek.at = Date.now();
+    document.querySelectorAll(".is-peeked").forEach(function (b) { b.classList.remove("is-peeked"); });
+    anchor.classList.add("is-peeked");
+    placePeek(anchor);
+    el.classList.remove("is-in");
+    void el.offsetWidth;
+    el.classList.add("is-in");
+  }
+
+  function closePeek() {
+    if (!peek.open) return;
+    peek.open = false;
+    peek.id = "";
+    document.getElementById("peek").hidden = true;
+    document.querySelectorAll(".is-peeked").forEach(function (b) { b.classList.remove("is-peeked"); });
+  }
+
+  function bindPeek() {
+    const el = document.getElementById("peek");
+    el.addEventListener("click", function (e) {
+      const b = e.target.closest("[data-pk]");
+      if (b) {
+        e.stopPropagation();
+        const id = peek.id;
+        closePeek();
+        if (b.getAttribute("data-pk") === "details") openOccurrence(id);
+        return;
+      }
+      if (e.target.closest("[data-act]")) closePeek();
+    }, true);
+    document.addEventListener("click", function (e) {
+      if (peek.open && !el.contains(e.target) && !e.target.closest("[data-act='open-occ']")) closePeek();
+    });
+    window.addEventListener("resize", closePeek);
+    document.addEventListener("scroll", function (e) {
+      if (peek.open && !el.contains(e.target) && Date.now() - peek.at > 250) closePeek();
+    }, true);
+  }
+
   function skipOcc(kind, id, date) {
     S.update(function (data) {
       if (kind === "class") {
@@ -1420,7 +1594,8 @@
     if (act === "open-occ") {
       e.preventDefault();
       e.stopPropagation();
-      openOccurrence(t.getAttribute("data-id"));
+      if (canPeek(t)) openPeek(t.getAttribute("data-id"), t);
+      else openOccurrence(t.getAttribute("data-id"));
       return;
     }
     if (act === "toggle-classes") {
@@ -1811,6 +1986,7 @@
     document.getElementById("next-btn").addEventListener("click", function () { shiftPeriod(1); });
     document.getElementById("today-btn").addEventListener("click", function () { goToDate(new Date()); });
     bindPicker();
+    bindPeek();
     document.getElementById("home-btn").addEventListener("click", function () { ui.page = "home"; render(); });
     document.getElementById("add-btn").addEventListener("click", openAddChooser);
     document.getElementById("menu-btn").addEventListener("click", function () {
@@ -1855,6 +2031,7 @@
       if (e.target && (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable)) return;
       if (modal.open) return;
       if (picker.open && e.key === "Escape") { closePicker(); return; }
+      if (peek.open && e.key === "Escape") { closePeek(); return; }
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       const onCal = ui.page === "calendar";
       let hit = true;
@@ -1878,7 +2055,7 @@
       const m = Math.floor(Date.now() / 60000);
       if (m === lastMin) return;
       lastMin = m;
-      if (document.hidden || modal.open || ui.page !== "calendar") return;
+      if (document.hidden || modal.open || peek.open || ui.page !== "calendar") return;
       renderCalendar();
     }, 15000);
     document.addEventListener("visibilitychange", function () {

@@ -31,3 +31,18 @@ Re-checked first: the live site loaded (200) with no console errors.
 - Small fix: going to the next or previous month from the 31st no longer skips a month (Jan 31 → Feb 28, not Mar 3).
 
 **Tested:** headless Chromium at 1280×800, 1920×1080 and 390×844. No console errors, no horizontal overflow (including mid-slide), nothing in the top bar clipped, and day view fits 7:30 AM–10:30 PM with no scrolling. Every shortcut moves to the right period and direction; the picker opens, changes months, jumps and closes. Classes expand and collapse in month, week, day and the side panel, and the home molecule hub still opens the calendar. No storage changes, so saved data is untouched.
+
+## Nov 17, 2026 — pass #3 (4 AM ET)
+
+Re-checked first: the live site loaded (200) with no console errors; the picker and shortcuts worked.
+
+**Ideas taken from:** Google Calendar and Notion Calendar (a small preview card when you click an event), Things (homework grouped by when it's due), and Structured/Fitbod-style week rings (a row showing the gym week at a glance).
+
+**Added:**
+- **Event preview popover.** On desktop, clicking a block or pill in month, week or day view opens a small card next to it instead of the full dialog. It shows a colour swatch, the title, the date and time, the category and location, and notes (up to 4 lines). It has the same quick actions as before: Skip this day / Edit class, Skip / Log workout, Skip / Edit event, and Mark done / Edit for homework. The card flips to the left when there's no room on the right, stays on screen, and highlights the block you clicked with a thin ring. Esc, a click elsewhere, scrolling, resizing, changing period or view, or clicking the same block again closes it. It opens with a springy scale/fade (turned off under reduced motion) and stays open through the once-a-minute now-line refresh. Phones/touch and the side panel still open the full dialog.
+- **Gym week at a glance.** Four chips sit under the week header: Push / Pull / Legs / Bonus. Each chip shows the planned day (and time, if set), "Today", or "Not set". A chip turns solid with a check only when a workout is actually logged on that day; nothing is ever marked done automatically. Tapping a planned chip opens that slot's editor. The summary now reads "2/3 planned (+bonus) · 1 done". On phones the chips form a 2×2 grid.
+- **Homework grouped by due date.** Overdue (red), Today, Tomorrow, Next 7 days, Later, No due date and Done (under All), each with a count. Items are sorted by due date and time. Today and Tomorrow show only the time. The list still starts empty, and the filters (Open / Overdue / Done / All) work the same as before.
+
+**Polish:** A homework due time outside the 7:30 AM–10:30 PM window (e.g. 11:59 PM) used to stretch the whole week/day grid to midnight and get cut off at the bottom. It's now pinned inside the window and still labelled with its real time ("Lab report, 11:59pm"), so the grid stays 7:30 AM–10:30 PM.
+
+**Tested:** headless Chromium at 1280×800, 1920×1080 and 390×844, with and without sample homework/gym data. No console errors and no horizontal overflow. Day and week fit 7:30 AM–10:30 PM with no scrolling. The popover opens, flips, closes (Esc, outside click, arrow keys) and its actions work (Edit class opens the dialog; Mark done toggles). Classes expand and collapse, the picker and all shortcuts still work, and the home hub opens the calendar. No storage-shape changes, so saved data is untouched.

@@ -1380,3 +1380,67 @@ input[type="color"] {
   .topbar-period .pl-day { display: none; }
   .view-switch button { padding: 5px 6px; }
 }
+
+/* ---- Pass #3: event preview popover (Google Calendar / Notion Calendar style) ---- */
+.peek {
+  position: fixed; z-index: 55; width: 288px; max-width: calc(100vw - 16px);
+  background: var(--bg-elev); border: 1px solid var(--line-strong); border-radius: 12px;
+  padding: 12px 14px 12px; box-shadow: 0 18px 50px rgba(0,0,0,.5);
+}
+.peek[hidden] { display: none; }
+.peek.is-in { animation: pk-in .32s var(--spring) both; }
+@keyframes pk-in { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+.pk-head { display: flex; align-items: flex-start; gap: 10px; }
+.pk-sw { width: 12px; height: 12px; border-radius: 4px; background: var(--c, #888); flex-shrink: 0; margin-top: 5px; }
+.pk-title { flex: 1; min-width: 0; margin: 0; font-size: 17px; font-weight: 600; color: var(--ink); line-height: 1.25; overflow-wrap: anywhere; }
+.pk-x.icon-btn { width: 26px; height: 26px; margin: -3px -6px 0 0; flex-shrink: 0; }
+.pk-x svg { width: 14px; height: 14px; }
+.pk-when { margin: 6px 0 0 22px; font-size: 13.5px; color: var(--ink-2); }
+.pk-meta { margin: 2px 0 0 22px; font-size: 12.5px; color: var(--muted); }
+.pk-notes {
+  margin: 8px 0 0 22px; font-size: 13px; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.pk-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.pk-actions button { padding: 6px 11px; font-size: 13px; }
+.evt-block.is-peeked, .evt-pill.is-peeked { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--c, var(--ink)); z-index: 3; }
+
+/* ---- Pass #3: gym week at a glance ---- */
+.gym-glance { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: -6px 0 24px; max-width: 640px; }
+.gg-chip {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(226, 90, 60, 0.45);
+  background: transparent; color: var(--ink); font-family: var(--font); text-align: left; min-width: 0;
+  transition: transform .28s var(--spring), background .2s ease;
+}
+button.gg-chip { cursor: pointer; }
+button.gg-chip:hover { transform: translateY(-1px); background: rgba(226, 90, 60, 0.08); }
+.gg-name { font-size: 15px; font-weight: 600; }
+.gg-when { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.gg-chip.is-empty { border-color: var(--line-strong); border-style: dashed; color: var(--muted); }
+.gg-chip.is-empty .gg-name { font-weight: 400; }
+.gg-chip.is-bonus { border-style: dashed; }
+.gg-chip.is-done { background: #E25A3C; border-color: #E25A3C; color: #F7F4EE; }
+.gg-chip.is-done .gg-when { color: rgba(247, 244, 238, .85); }
+button.gg-chip.is-done:hover { background: #E25A3C; }
+.gg-check { position: absolute; top: 9px; right: 10px; width: 16px; height: 16px; animation: gg-pop .45s var(--spring) both .1s; }
+@keyframes gg-pop { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: none; } }
+@media (max-width: 640px) {
+  .gym-glance { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ---- Pass #3: homework grouped by due date (Things style) ---- */
+.task-group { margin: 0 0 18px; }
+.tg-head {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 2px;
+  font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+}
+.task-group.is-overdue .tg-head { color: var(--danger); }
+.tg-count { font-size: 11px; letter-spacing: 0; padding: 0 7px; line-height: 17px; border-radius: 99px; background: var(--bg-muted); color: var(--ink-2); }
+.task-row input[type="checkbox"] { transition: transform .28s var(--spring); }
+.task-row input[type="checkbox"]:active { transform: scale(.86); }
+
+@media (prefers-reduced-motion: reduce) {
+  .peek.is-in, .gg-chip, .gg-check { animation: none !important; }
+  button.gg-chip:hover, .task-row input[type="checkbox"]:active { transform: none; }
+}
