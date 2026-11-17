@@ -1,7 +1,6 @@
 /* llc — UI */
 (function () {
   const S = window.LLCStore;
-  const Ics = window.LLCIcs;
 
   const CAT_PRI = { "cat-classes": 0, "cat-gym": 1, "cat-events": 2, "cat-personal": 3 };
 
@@ -12,13 +11,12 @@
     hiddenCats: new Set(),
     taskFilter: "open",
     sidebarOpen: false,
-    gymWeek: null
+    gymWeek: null,
+    openClassDays: new Set(),
+    revealDay: ""
   };
 
   const hubMotion = { running: false, raf: 0, nodes: [], onMove: null, onResize: null, mouse: { x: 0, y: 0, inside: false } };
-
-  let notified = new Set();
-  try { notified = new Set(JSON.parse(sessionStorage.getItem("llc-notified") || "[]")); } catch (e) { notified = new Set(); }
 
   function esc(s) {
     return String(s == null ? "" : s)
@@ -70,6 +68,43 @@
     return S.formatTimeRangeCompact(occ.startTime, occ.endTime);
   }
 
+  /* School classes collapse into one "Classes" bar per day (click to expand / collapse). */
+  function isClassOcc(it) {
+    return it.source === "class" && !it.allDay && !!it.startTime;
+  }
+
+  function classGroupFor(ds, items) {
+    const cls = items.filter(isClassOcc).sort(compareOcc);
+    if (cls.length < 2) return null;
+    let s0 = cls[0].startTime, e0 = cls[0].endTime || cls[0].startTime;
+    cls.forEach(function (c) {
+      if (c.startTime < s0) s0 = c.startTime;
+      const e = c.endTime || c.startTime;
+      if (e > e0) e0 = e;
+    });
+    return {
+      id: "classes:" + ds, source: "classgroup", title: "Classes", shortName: "Classes",
+      categoryId: cls[0].categoryId || "cat-classes", date: ds, startTime: s0, endTime: e0,
+      allDay: false, children: cls, location: "", notes: "", isOpen: ui.openClassDays.has(ds)
+    };
+  }
+
+  /* Returns the day's items with classes folded into one bar (or expanded, with children flagged). */
+  function foldClasses(ds, items) {
+    const g = classGroupFor(ds, items);
+    if (!g) return items;
+    if (ui.openClassDays.has(ds)) {
+      g.isOpen = true;
+      g.children.forEach(function (c) { c._inGroup = true; });
+      return items;
+    }
+    return items.filter(function (it) { return !isClassOcc(it); }).concat([g]).sort(compareOcc);
+  }
+
+  function classSummary(g) {
+    return g.children.map(function (c) { return shortTitle(c); }).join(" · ");
+  }
+
   function applyTheme() {
     document.documentElement.setAttribute("data-theme", "dark");
     const meta = document.querySelector('meta[name="theme-color"]');
@@ -84,17 +119,6 @@
     el.textContent = msg;
     document.body.appendChild(el);
     setTimeout(function () { el.remove(); }, 2800);
-  }
-
-  function download(filename, text, mime) {
-    const blob = new Blob([text], { type: mime || "text/plain;charset=utf-8" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(function () { URL.revokeObjectURL(a.href); }, 500);
   }
 
   function initialCursor() {
@@ -173,8 +197,7 @@
     const box = document.getElementById("category-filters");
     box.innerHTML = S.get().categories.map(function (c) {
       const off = ui.hiddenCats.has(c.id) ? " is-off" : "";
-      return '<button type="button" class="cat-filter' + off + '" data-act="toggle-cat" data-id="' + esc(c.id) + '">' +
-        '<span class="swatch" style="--c:' + esc(c.color) + '"></span>' + esc(c.name) + "</button>";
+      return '<button type="button" class="cat-filter' + off + '" data-act="toggle-cat" data-id="' + esc(c.id) + '" aria-pressed="' + (off ? "false" : "true") + '" style="--c:' + esc(c.color) + '">' + esc(c.name) + "</button>";
     }).join("");
   }
 
@@ -204,20 +227,33 @@
         const d = S.addDays(gridStart, r * 7 + c);
         const ds = S.toDateStr(d);
         const outside = d.getMonth() !== ui.cursor.getMonth();
-        const items = S.getOccurrencesInRange(d, d, { hiddenCats: ui.hiddenCats });
+        const raw = S.getOccurrencesInRange(d, d, { hiddenCats: ui.hiddenCats });
+        const group = classGroupFor(ds, raw);
+        const items = foldClasses(ds, raw);
         let cls = "day-cell";
         if (outside) cls += " is-outside";
         if (ds === todayStr) cls += " is-today";
         html += '<div class="' + cls + '" data-act="open-day" data-date="' + ds + '">';
         html += '<div class="day-num">' + d.getDate() + "</div>";
-        const max = 3;
-        items.slice(0, max).forEach(function (it) {
-          const taskClass = it.source === "task" ? " is-task" + (it.done ? " is-done" : "") : " is-short";
-          html += '<button type="button" class="evt-pill' + taskClass + '" data-act="open-occ" data-id="' + esc(it.id) + '" style="--c:' + esc(catColor(it.categoryId)) + '">' +
-            (it.source === "task" ? "" : '<span class="dot"></span>') + esc(shortTitle(it)) + "</button>";
+        const open = !!(group && group.isOpen);
+        const reveal = ui.revealDay === ds ? " is-reveal" : "";
+        const max = open ? 99 : 3;
+        const shown = open
+          ? [group].concat(group.children, items.filter(function (it) { return !it._inGroup; }))
+          : items;
+        shown.slice(0, max).forEach(function (it) {
+          if (it.source === "classgroup") {
+            html += '<button type="button" class="evt-pill is-group' + (it.isOpen ? " is-open" : "") + reveal + '" data-act="toggle-classes" data-date="' + ds + '" aria-expanded="' + (it.isOpen ? "true" : "false") + '" style="--c:' + esc(catColor(it.categoryId)) + '">' +
+              '<span class="pt">Classes</span><span class="pm">' + esc(S.formatTimeRangeCompact(it.startTime, it.endTime)) + "</span></button>";
+            return;
+          }
+          const taskClass = it.source === "task" ? " is-task" + (it.done ? " is-done" : "") : "";
+          const child = it._inGroup ? " is-child" + reveal : "";
+          html += '<button type="button" class="evt-pill' + taskClass + child + '" data-act="open-occ" data-id="' + esc(it.id) + '" style="--c:' + esc(catColor(it.categoryId)) + '">' +
+            esc(shortTitle(it)) + "</button>";
         });
-        if (items.length > max) {
-          html += '<button type="button" class="more-btn" data-act="open-day" data-date="' + ds + '">+' + (items.length - max) + " more</button>";
+        if (shown.length > max) {
+          html += '<button type="button" class="more-btn" data-act="open-day" data-date="' + ds + '">+' + (shown.length - max) + " more</button>";
         }
         html += "</div>";
       }
@@ -320,23 +356,30 @@
       const top = yPct(m);
       const edge = i === 0 ? " is-start" : (i === marks.length - 1 ? " is-end" : "");
       html += '<div class="hour-line' + edge + '" style="top:' + top + '%"></div>';
-      const tooClose = (m !== range.start && Math.abs(m - range.start) < 50) || (m !== range.end && Math.abs(m - range.end) < 50);
+      const tooClose = (m !== range.start && Math.abs(m - range.start) < 30) || (m !== range.end && Math.abs(m - range.end) < 30);
       if (!tooClose) html += '<div class="hour-label' + edge + '" style="top:' + top + '%">' + esc(gutterLabel(m)) + "</div>";
     });
     html += "</div>";
 
     dayDates.forEach(function (d) {
       const ds = S.toDateStr(d);
-      const items = packColumns(
-        S.getOccurrencesInRange(d, d, { hiddenCats: ui.hiddenCats }).filter(function (it) { return !it.allDay && it.startTime; })
-      );
-      html += '<div class="day-col" data-act="add-at" data-date="' + ds + '">';
+      const timed = S.getOccurrencesInRange(d, d, { hiddenCats: ui.hiddenCats }).filter(function (it) { return !it.allDay && it.startTime; });
+      const group = classGroupFor(ds, timed);
+      const items = packColumns(foldClasses(ds, timed));
+      const open = !!(group && group.isOpen);
+      const reveal = ui.revealDay === ds ? " is-reveal" : "";
+      html += '<div class="day-col' + (open ? " has-rail" : "") + '" data-act="add-at" data-date="' + ds + '">';
       if (ds === todayStr) {
         const nowMin = now.getHours() * 60 + now.getMinutes();
         if (nowMin >= range.start && nowMin <= range.end) {
           html += '<div class="now-line" style="top:' + yPct(nowMin) + '%"></div>';
         }
       }
+      if (open) {
+        const gs = S.minutesSinceMidnight(group.startTime), ge = S.minutesSinceMidnight(group.endTime);
+        html += '<button type="button" class="cls-rail' + reveal + '" data-act="toggle-classes" data-date="' + ds + '" aria-expanded="true" aria-label="Collapse classes" title="Collapse classes" style="--c:' + esc(catColor(group.categoryId)) + ";top:" + yPct(gs) + "%;height:calc(" + ((ge - gs) / span * 100) + '% - 2px)"></button>';
+      }
+      html += '<div class="col-blocks">';
       items.forEach(function (it) {
         const startMin = S.minutesSinceMidnight(it.startTime);
         const endMin = it.endTime ? S.minutesSinceMidnight(it.endTime) : startMin + 60;
@@ -347,14 +390,21 @@
         const left = width * it._col;
         const detailed = kind === "day";
         const descBits = [];
-        if (detailed) {
+        if (detailed && dur < 75) {
+          /* too short for a description line */
+        } else if (detailed && it.source === "classgroup") {
+          descBits.push(classSummary(it));
+        } else if (detailed) {
           if (it.location) descBits.push(it.location);
           if (it.notes) descBits.push(it.notes);
           if (it.source === "task") descBits.push("Homework" + (it.done ? " (done)" : ""));
         }
-        const isShort = !detailed && dur < 40;
+        const isShort = dur < (detailed ? 30 : 40);
         const sty = "--c:" + catColor(it.categoryId) + ";top:" + top + "%;height:calc(" + height + "% - 2px);left:calc(" + left + "% + 2px);width:calc(" + width + "% - 4px);right:auto;";
-        html += '<button type="button" class="evt-block' + (detailed ? " is-detailed" : "") + (isShort ? " is-short" : "") + '" data-act="open-occ" data-id="' + esc(it.id) + '" style="' + sty + '">';
+        const isGroup = it.source === "classgroup";
+        const act = isGroup ? 'data-act="toggle-classes" data-date="' + ds + '" aria-expanded="false"' : 'data-act="open-occ" data-id="' + esc(it.id) + '"';
+        const extra = (detailed ? " is-detailed" : "") + (isShort ? " is-short" : "") + (isGroup ? " is-group" + reveal : "") + (it._inGroup ? " is-child" + reveal : "");
+        html += '<button type="button" class="evt-block' + extra + '" ' + act + ' style="' + sty + '">';
         if (isShort) {
           html += '<span class="ttl">' + esc(shortTitle(it)) + ", " + esc(S.formatGCalTime(it.startTime)) + "</span>";
         } else {
@@ -364,18 +414,56 @@
         if (descBits.length) html += '<span class="desc">' + esc(descBits.join(" · ")) + "</span>";
         html += "</button>";
       });
-      html += "</div>";
+      html += "</div></div>";
     });
 
     html += "</div></div></div>";
     return html;
   }
 
-  function occRow(it, extra, whenText) {
-    return '<button type="button" class="agenda-item" data-act="open-occ" data-id="' + esc(it.id) + '">' +
-      '<span class="bar" style="--c:' + esc(catColor(it.categoryId)) + '"></span>' +
+  function occRow(it, extra, whenText, opts) {
+    const o = opts || {};
+    const cls = "agenda-item" + (it._inGroup ? " is-child" : "") + (o.reveal ? " is-reveal" : "") + (o.progress != null ? " has-progress" : "") + (it.source === "task" && it.done ? " is-done" : "");
+    const prog = o.progress != null ? '<span class="fill" style="--p:' + Math.max(0, Math.min(1, o.progress)).toFixed(4) + '"></span>' : "";
+    return '<button type="button" class="' + cls + '" data-act="open-occ" data-id="' + esc(it.id) + '" style="--c:' + esc(catColor(it.categoryId)) + '">' + prog +
       '<span class="meta"><span class="title">' + esc(it.title) + (extra || "") + "</span>" +
       '<span class="sub">' + esc(whenText || timeLabel(it)) + "</span></span></button>";
+  }
+
+  function groupRow(g, reveal) {
+    return '<button type="button" class="agenda-item is-group' + (g.isOpen ? " is-open" : "") + (reveal ? " is-reveal" : "") + '" data-act="toggle-classes" data-date="' + esc(g.date) + '" aria-expanded="' + (g.isOpen ? "true" : "false") + '" style="--c:' + esc(catColor(g.categoryId)) + '">' +
+      '<span class="meta"><span class="title">Classes<span class="count">' + g.children.length + "</span></span>" +
+      '<span class="sub">' + esc(timeLabel(g)) + "</span></span>" +
+      '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>';
+  }
+
+  /* One day's rows for the side panel, with classes folded into one bar. */
+  function dayRowsHTML(ds, items) {
+    const group = classGroupFor(ds, items);
+    const folded = foldClasses(ds, items);
+    const reveal = ui.revealDay === ds;
+    let html = "";
+    let groupDone = false;
+    folded.forEach(function (it) {
+      if (it.source === "classgroup") { html += groupRow(it, reveal); return; }
+      if (it._inGroup) {
+        if (!groupDone) {
+          groupDone = true;
+          html += groupRow(group, reveal);
+          group.children.forEach(function (c) { html += occRow(c, "", "", { reveal: reveal }); });
+        }
+        return;
+      }
+      html += occRow(it, it.source === "task" && it.done ? " · done" : "");
+    });
+    return html;
+  }
+
+  function durWords(ms) {
+    const mins = Math.max(1, Math.round(ms / 60000));
+    if (mins < 60) return mins + " min";
+    const h = Math.floor(mins / 60), m = mins % 60;
+    return h + " hr" + (m ? " " + m + " min" : "");
   }
 
   function hideSpringLists() {
@@ -389,7 +477,10 @@
   }
 
   function nextWhenLabel(it, todayStr) {
-    if (it.date === todayStr) return timeLabel(it);
+    if (it.date === todayStr) {
+      if (it.allDay || !it.startTime) return "Today · All day";
+      return "in " + durWords(startMs(it) - Date.now()) + " · " + timeLabel(it);
+    }
     const d = S.parseDateStr(it.date);
     const dateBit = S.WEEKDAYS[d.getDay()] + ", " + S.MONTHS[d.getMonth()].slice(0, 3) + " " + d.getDate();
     if (it.allDay || !it.startTime) return dateBit + " · All day";
@@ -423,31 +514,37 @@
     const todayItems = all.filter(function (it) { return it.date === todayStr; }).sort(compareOcc);
     const soonEnd = S.toDateStr(S.addDays(now, 7));
     const weekItems = all.filter(function (it) {
-      return it.date > todayStr && it.date <= soonEnd && it !== next;
+      return it.date > todayStr && it.date <= soonEnd && (it !== next || isClassOcc(it));
     }).sort(compareOcc);
 
     let html = '<h2 class="panel-title">' + esc(S.formatDateNice(now)) + "</h2>";
-    html += '<div class="panel-section happening"><h3>Happening now / Next up</h3>';
+    html += '<div class="panel-section happening"><h3>' + (happening.length ? "Now · Next up" : "Next up") + "</h3>";
     if (!happening.length && !next) html += '<p class="empty-note">Nothing coming up.</p>';
-    happening.forEach(function (it) { html += occRow(it, '<span class="badge-now">Now</span>'); });
+    happening.forEach(function (it) {
+      const s0 = startMs(it), e0 = endMs(it);
+      const p = (now.getTime() - s0) / Math.max(1, e0 - s0);
+      html += occRow(it, '<span class="badge-now">Now</span>', durWords(e0 - now.getTime()) + " left · ends " + S.formatTime(it.endTime || ""), { progress: p });
+    });
     if (next) html += occRow(next, "", nextWhenLabel(next, todayStr));
     html += "</div>";
 
     html += '<div class="panel-section"><h3>Today</h3>';
     if (!todayItems.length) html += '<p class="empty-note">No items today.</p>';
-    todayItems.forEach(function (it) { html += occRow(it, it.done ? " · done" : ""); });
+    html += dayRowsHTML(todayStr, todayItems);
     html += "</div>";
 
-    html += '<div class="panel-section"><h3>This week / upcoming soon</h3>';
+    html += '<div class="panel-section"><h3>This week</h3>';
     if (!weekItems.length) html += '<p class="empty-note">Nothing scheduled this week.</p>';
     else {
-      let last = "";
+      const byDate = [];
       weekItems.forEach(function (it) {
-        if (it.date !== last) {
-          html += '<div class="agenda-date">' + esc(S.formatDateNice(it.date)) + "</div>";
-          last = it.date;
-        }
-        html += occRow(it);
+        const lastG = byDate[byDate.length - 1];
+        if (!lastG || lastG.date !== it.date) byDate.push({ date: it.date, items: [it] });
+        else lastG.items.push(it);
+      });
+      byDate.forEach(function (gp) {
+        html += '<div class="agenda-date">' + esc(S.formatDateNice(gp.date)) + "</div>";
+        html += dayRowsHTML(gp.date, gp.items);
       });
     }
     html += "</div>";
@@ -469,7 +566,7 @@
     let html = '<div class="page-head"><div><h2>School</h2></div>' +
       '<button class="primary-btn" type="button" data-act="add-class">Add class</button></div>';
     if (!classes.length) {
-      html += '<div class="card"><p class="empty-note">No classes yet. Add a semester schedule and it will fill the calendar.</p></div>';
+      html += '<div class="card"><p class="empty-note">No classes yet.</p></div>';
     }
     html += '<div class="card-list">';
     classes.forEach(function (cls) {
@@ -633,7 +730,7 @@
       if (names.length) {
         html += '<div class="card" style="margin-top:14px"><h3>Exercise progress</h3>';
         names.forEach(function (n) {
-          html += '<button class="occ-row" type="button" data-act="ex-history" data-name="' + esc(n) + '"><span class="bar" style="--c:#E25A3C"></span><span class="meta"><span class="title">' + esc(n) + '</span><span class="sub">View history</span></span></button>';
+          html += '<button class="occ-row" type="button" data-act="ex-history" data-name="' + esc(n) + '" style="--c:' + esc(catColor("cat-gym")) + '"><span class="meta"><span class="title">' + esc(n) + '</span><span class="sub">View history</span></span></button>';
         });
         html += "</div>";
       }
@@ -715,7 +812,7 @@
     st.categories.forEach(function (c) {
       html += '<div class="cat-edit"><input type="color" data-act="cat-color" data-id="' + esc(c.id) + '" value="' + esc(toHex(c.color)) + '" />' +
         '<input type="text" data-act="cat-name" data-id="' + esc(c.id) + '" value="' + esc(c.name) + '" />' +
-        (c.builtin ? '<span class="muted">Built-in</span>' : '<button class="danger-btn" type="button" data-act="delete-cat" data-id="' + esc(c.id) + '">Delete</button>') +
+        (c.builtin ? "" : '<button class="danger-btn" type="button" data-act="delete-cat" data-id="' + esc(c.id) + '">Delete</button>') +
         "</div>";
     });
     html += '<button class="ghost-btn" type="button" data-act="add-cat" style="margin-top:10px">Add category</button></div>';
@@ -797,7 +894,7 @@
     const cls = existing || {
       name: "", shortName: "", days: [], startTime: "09:30", endTime: "10:45",
       startDate: (S.SPRING_2027 && S.SPRING_2027.start) || "", endDate: (S.SPRING_2027 && S.SPRING_2027.end) || "",
-      location: "Broward College", notes: "", reminderMinutes: S.get().settings.defaultReminderMinutes,
+      location: "Broward College", notes: "",
       skipDates: (S.SPRING_2027 && S.SPRING_2027.daySkips.slice()) || [], categoryId: "cat-classes"
     };
     openModal(existing ? "Edit class" : "Add class",
@@ -812,7 +909,6 @@
         field("Semester end", '<input type="date" id="f-to" value="' + esc(cls.endDate) + '" />') +
         field("Location", '<input type="text" id="f-loc" value="' + esc(cls.location || "") + '" />', true) +
         field("Notes", '<textarea id="f-notes">' + esc(cls.notes || "") + "</textarea>", true) +
-        field("Reminder (minutes before)", '<input type="number" id="f-remind" min="0" max="180" value="' + esc(cls.reminderMinutes == null ? "" : cls.reminderMinutes) + '" />') +
         skipEditor(cls.skipDates) +
       "</div>",
       '<button class="ghost-btn" type="button" data-act="close-modal">Cancel</button>' +
@@ -837,7 +933,6 @@
       endDate: val("f-to"),
       location: val("f-loc"),
       notes: val("f-notes"),
-      reminderMinutes: numOrNull(val("f-remind")),
       skipDates: gatherSkips()
     };
     if (!rec.startDate || !rec.endDate) return toast("Add a start and end date.");
@@ -859,7 +954,7 @@
     const ev = existing || {
       title: "", categoryId: (preset && preset.categoryId) || "cat-events", date: (preset && preset.date) || S.toDateStr(ui.cursor),
       startTime: (preset && preset.time) || "12:00", endTime: (preset && preset.end) || "13:00",
-      allDay: false, location: "", notes: "", reminderMinutes: S.get().settings.defaultReminderMinutes,
+      allDay: false, location: "", notes: "",
       recurrence: null, skipDates: []
     };
     const rec = ev.recurrence || { freq: "none", days: ev.date ? [S.parseDateStr(ev.date).getDay()] : [], until: "", skipDates: [] };
@@ -878,7 +973,6 @@
           '<option value="daily"' + (rec.freq === "daily" ? " selected" : "") + ">Daily</option></select>") +
         field("Until (for repeats)", '<input type="date" id="f-until" value="' + esc((ev.recurrence && ev.recurrence.until) || "") + '" />') +
         '<div class="span-2"><div class="sidebar-label">Repeat on</div>' + dayToggleHTML(rec.days) + "</div>" +
-        field("Reminder (minutes before)", '<input type="number" id="f-remind" min="0" max="180" value="' + esc(ev.reminderMinutes == null ? "" : ev.reminderMinutes) + '" />') +
         skipEditor([].concat(ev.skipDates || [], (ev.recurrence && ev.recurrence.skipDates) || [])) +
       "</div>",
       '<button class="ghost-btn" type="button" data-act="close-modal">Cancel</button>' +
@@ -910,7 +1004,6 @@
       allDay: document.getElementById("f-allday").checked,
       location: val("f-loc"),
       notes: val("f-notes"),
-      reminderMinutes: numOrNull(val("f-remind")),
       recurrence: rec,
       skipDates: gatherSkips()
     };
@@ -929,7 +1022,7 @@
   }
 
   function openTaskForm(existing) {
-    const t = existing || { title: "", classId: "", dueDate: S.toDateStr(ui.cursor), dueTime: "", notes: "", done: false, categoryId: "cat-classes", reminderMinutes: S.get().settings.defaultReminderMinutes };
+    const t = existing || { title: "", classId: "", dueDate: S.toDateStr(ui.cursor), dueTime: "", notes: "", done: false, categoryId: "cat-classes" };
     const opts = '<option value="">No class</option>' + S.get().classes.map(function (c) {
       return '<option value="' + esc(c.id) + '"' + (c.id === t.classId ? " selected" : "") + ">" + esc(c.name) + "</option>";
     }).join("");
@@ -1140,43 +1233,6 @@
     render();
   }
 
-  function persistNotified() {
-    try { sessionStorage.setItem("llc-notified", JSON.stringify(Array.from(notified).slice(-200))); } catch (e) {}
-  }
-
-  function checkReminders() {
-    const st = S.get();
-    if (!st.settings.remindersEnabled) return;
-    if (!("Notification" in window) || Notification.permission !== "granted") return;
-    const now = new Date();
-    const items = S.getOccurrencesInRange(S.addDays(now, -1), S.addDays(now, 2));
-    items.forEach(function (it) {
-      if (it.allDay || !it.startTime) return;
-      const mins = it.reminderMinutes == null ? st.settings.defaultReminderMinutes : it.reminderMinutes;
-      if (mins == null) return;
-      const start = S.combine(it.date, it.startTime);
-      const trigger = new Date(start.getTime() - Number(mins) * 60000);
-      if (now >= trigger && now < start && !notified.has(it.id)) {
-        notified.add(it.id);
-        persistNotified();
-        try { new Notification(it.title, { body: timeLabel(it) + " · in " + mins + " min", silent: true }); } catch (e) {}
-      }
-    });
-  }
-
-  function enableReminders() {
-    if (!("Notification" in window)) return toast("Notifications are not available in this browser.");
-    const done = function (perm) {
-      S.update(function (d) { d.settings.remindersEnabled = perm === "granted"; });
-      if (perm === "granted") toast("Reminders on. They only fire while this tab is open.");
-      else toast("Permission was not granted.");
-      render();
-    };
-    if (Notification.permission === "granted") return done("granted");
-    Notification.requestPermission().then(done);
-  }
-
-
   function onClick(e) {
     const t = e.target.closest("[data-act]");
     if (!t) {
@@ -1207,6 +1263,17 @@
       e.preventDefault();
       e.stopPropagation();
       openOccurrence(t.getAttribute("data-id"));
+      return;
+    }
+    if (act === "toggle-classes") {
+      e.preventDefault();
+      e.stopPropagation();
+      const ds = t.getAttribute("data-date");
+      if (ui.openClassDays.has(ds)) ui.openClassDays.delete(ds);
+      else ui.openClassDays.add(ds);
+      ui.revealDay = ds;
+      render();
+      ui.revealDay = "";
       return;
     }
     if (act === "open-day") {
@@ -1378,13 +1445,6 @@
       skipOcc(t.getAttribute("data-kind"), t.getAttribute("data-id"), t.getAttribute("data-date"));
       return;
     }
-if (act === "toggle-reminders") {
-      if (S.get().settings.remindersEnabled) {
-        S.update(function (d) { d.settings.remindersEnabled = false; });
-        render();
-      } else enableReminders();
-      return;
-    }
     if (act === "add-cat") {
       const name = window.prompt("Category name?");
       if (!name) return;
@@ -1403,18 +1463,6 @@ if (act === "toggle-reminders") {
       render();
       return;
     }
-    if (act === "export-json") {
-      download("llc-backup.json", S.exportJSON(), "application/json");
-      toast("Backup downloaded.");
-      return;
-    }
-    if (act === "import-json") { document.getElementById("file-json").click(); return; }
-    if (act === "export-ics") {
-      download("llc-calendar.ics", Ics.exportICS(S.get()), "text/calendar");
-      toast("Calendar exported.");
-      return;
-    }
-    if (act === "import-ics") { document.getElementById("file-ics").click(); return; }
     if (act === "reset-data") {
       if (!window.confirm("Reset llc to the preloaded Fall 2026 and Spring 2027 schedules? This clears gym logs, tasks, and edits on this device.")) return;
       S.clearAll();
@@ -1615,39 +1663,7 @@ if (act === "toggle-reminders") {
     document.getElementById("modal-close").addEventListener("click", closeModal);
     modal.addEventListener("click", function (e) { if (e.target === modal) closeModal(); });
 
-    document.getElementById("file-json").addEventListener("change", function (e) {
-      const file = e.target.files && e.target.files[0];
-      e.target.value = "";
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = function () {
-        try { S.importJSON(String(reader.result)); ui.cursor = initialCursor(); render(); toast("Backup imported."); }
-        catch (err) { toast("Could not read that JSON file."); }
-      };
-      reader.readAsText(file);
-    });
-    document.getElementById("file-ics").addEventListener("change", function (e) {
-      const file = e.target.files && e.target.files[0];
-      e.target.value = "";
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = function () {
-        try {
-          const evs = Ics.parseICS(String(reader.result));
-          if (!evs.length) return toast("No events found in that file.");
-          S.update(function (d) { d.events = d.events.concat(evs); });
-          render();
-          toast("Imported " + evs.length + " event" + (evs.length === 1 ? "" : "s") + ".");
-        } catch (err) { toast("Could not read that calendar file."); }
-      };
-      reader.readAsText(file);
-    });
-
     document.addEventListener("change", function (e) {
-      if (e.target && e.target.id === "reminder-mins") {
-        const n = Number(e.target.value);
-        if (!isNaN(n)) S.update(function (d) { d.settings.defaultReminderMinutes = n; });
-      }
       if (e.target && e.target.getAttribute("data-act") === "cat-color") {
         const id = e.target.getAttribute("data-id");
         const color = e.target.value;
@@ -1660,7 +1676,6 @@ if (act === "toggle-reminders") {
         if (!name) return;
         S.update(function (d) { const c = d.categories.find(function (x) { return x.id === id; }); if (c) c.name = name; });
       }
-      if (e.target && e.target.id === "f-split") applySplitPreset(e.target.value);
     });
 
     document.getElementById("onboard-classes").addEventListener("click", function () {
@@ -1687,12 +1702,28 @@ if (act === "toggle-reminders") {
     });
   }
 
+  /* Keep the red now-line and the side panel's countdown live, once a minute. */
+  function startLiveTick() {
+    let lastMin = -1;
+    setInterval(function () {
+      const m = Math.floor(Date.now() / 60000);
+      if (m === lastMin) return;
+      lastMin = m;
+      if (document.hidden || modal.open || ui.page !== "calendar") return;
+      renderCalendar();
+    }, 15000);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden && ui.page === "calendar" && !modal.open) renderCalendar();
+    });
+  }
+
   function init() {
     S.load();
     applyTheme();
     ui.cursor = initialCursor();
     bind();
     render();
+    startLiveTick();
     if (!S.get().onboarded) {
       const dlg = document.getElementById("onboarding");
       if (dlg && !dlg.open) dlg.showModal();
