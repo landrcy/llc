@@ -1,24 +1,24 @@
 # llc
 
-A personal life tracker for classes, gym, events, and tasks. It is a static site — everything is stored in your browser (`localStorage`). Export a JSON backup if you switch devices.
+A personal life tracker for school, gym, events, personal items, and homework. It is a static site — everything is stored in your browser (`localStorage`).
 
 Live site: https://landrcy.github.io/llc/
 
 ## What’s included
 
-- Calendar with Month, Week, and Day views
-- Side panel: Happening now / Next up, Today, and This week / upcoming soon
-- Categories: Classes, Gym, Events, Personal (plus any you add)
-- Recurring events, skip dates, class semester setup, gym weekly splits
-- Assignment list tied to classes (due dates show on the calendar)
+- Home hub with calendar, school, gym, events, and personal
+- Calendar with Month, Week, and Day views (week/day default to 7:30 AM–10:30 PM)
+- Side panel: Happening now / Next up, Today, and This week
+- Categories: School, Gym, Events, Personal
+- Recurring classes and events, skip dates, class semester setup
+- Gym weekly planner: Push / Pull / Legs plus an optional bonus day, weekdays only
+- Homework tracker (due date, class, title, done) — due items show as school-colored bars
 - Gym workout log with per-exercise history
-- Import/export JSON backups and `.ics` calendars
-- Optional silent browser reminders while the tab is open
 - Dark theme, Times New Roman
 
 ## Preloaded schedule
 
-Broward College classes are already on the calendar (times are approximate and editable). Opening the site shows a home hub: calendar, school, gym, events, and personal.
+Broward College classes are already on the calendar (times are approximate and editable). Gym sessions and homework are not preloaded. Spring 2027 classes stay in the data but stay out of the agenda and side panel until January 1, 2027; they still appear if you open January or later on the calendar.
 
 **Fall 2026:** August 21, 2026 – December 15, 2026. Day classes skip Thanksgiving (**Nov 25–29**). Also marked: Thanksgiving break (all day, Nov 25–29) and Fall finals week (Dec 9–15).
 

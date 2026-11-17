@@ -47,7 +47,7 @@
         </button>
         <button class="nav-btn" data-page="tasks" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8 12l2.5 2.5L16 9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          Tasks
+          Homework
         </button>
         <button class="nav-btn" data-page="settings" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4L18 18M18 6l-1.6 1.6M7.6 16.4L6 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
@@ -87,16 +87,18 @@
 
       <main class="main">
         <section class="view view-home" id="view-home">
-          <div class="hub" aria-label="Home">
-            <div class="hub-line hub-line-school" aria-hidden="true"></div>
-            <div class="hub-line hub-line-gym" aria-hidden="true"></div>
-            <div class="hub-line hub-line-events" aria-hidden="true"></div>
-            <div class="hub-line hub-line-personal" aria-hidden="true"></div>
-            <button type="button" class="hub-node hub-school" data-act="go" data-page="classes">school</button>
-            <button type="button" class="hub-node hub-events" data-act="go" data-page="events">events</button>
-            <button type="button" class="hub-node hub-calendar" data-act="go" data-page="calendar">calendar</button>
-            <button type="button" class="hub-node hub-personal" data-act="go" data-page="personal">personal</button>
-            <button type="button" class="hub-node hub-gym" data-act="go" data-page="gym">gym</button>
+          <div class="hub" id="hub" aria-label="Home">
+            <svg class="hub-spokes" aria-hidden="true">
+              <line class="hub-spoke" data-spoke="school" />
+              <line class="hub-spoke" data-spoke="events" />
+              <line class="hub-spoke" data-spoke="personal" />
+              <line class="hub-spoke" data-spoke="gym" />
+            </svg>
+            <button type="button" class="hub-node hub-school" data-spoke="school" data-act="go" data-page="classes" aria-label="School" title="School"><span class="hub-orb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c1.5 1.8 4 3 6 3s4.5-1.2 6-3v-5"/><path d="M22 10v6"/></svg></span></button>
+            <button type="button" class="hub-node hub-events" data-spoke="events" data-act="go" data-page="events" aria-label="Events" title="Events"><span class="hub-orb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.5 6.2L21 10l-4.7 4.1L17.5 21 12 17.8 6.5 21l1.2-6.9L3 10l6.5-.8L12 3z"/></svg></span></button>
+            <button type="button" class="hub-node hub-calendar" data-spoke="calendar" data-act="go" data-page="calendar" aria-label="Calendar" title="Calendar"><span class="hub-orb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg></span></button>
+            <button type="button" class="hub-node hub-personal" data-spoke="personal" data-act="go" data-page="personal" aria-label="Personal" title="Personal"><span class="hub-orb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.25"/><path d="M5 19.5c1.1-3.4 3.4-5.1 7-5.1s5.9 1.7 7 5.1"/></svg></span></button>
+            <button type="button" class="hub-node hub-gym" data-spoke="gym" data-act="go" data-page="gym" aria-label="Gym" title="Gym"><span class="hub-orb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 6.5v11M17.5 6.5v11M4 9v6M20 9v6M6.5 12h11"/></svg></span></button>
           </div>
         </section>
         <section class="view" id="view-calendar" hidden>
@@ -136,7 +138,7 @@
       <p class="lead">Your Fall 2026 and Spring 2027 Broward College schedules are already on the calendar (times are approximate and easy to edit). Track gym, events, and tasks here too. Everything stays on this device unless you export a backup.</p>
       <div class="onboard-actions">
         <button class="primary-btn" id="onboard-classes" type="button">Review class schedule</button>
-        <button class="secondary-btn" id="onboard-gym" type="button">Set up gym split</button>
+        <button class="secondary-btn" id="onboard-gym" type="button">Open gym planner</button>
         <button class="text-btn" id="onboard-skip" type="button">I'll explore first</button>
       </div>
     </div>

@@ -80,6 +80,38 @@
     return WEEKDAYS[d.getDay()] + ", " + MONTHS[d.getMonth()] + " " + d.getDate();
   }
 
+  function formatGCalTime(hhmm) {
+    if (!hhmm) return "";
+    const parts = hhmm.split(":").map(Number);
+    const h = parts[0], m = parts[1] || 0;
+    const ap = h >= 12 ? "pm" : "am";
+    const h12 = (h % 12) || 12;
+    return m ? h12 + ":" + pad(m) + ap : h12 + ap;
+  }
+
+  function formatGCalRange(start, end) {
+    if (!start) return "All day";
+    if (!end) return formatGCalTime(start);
+    const [sh, sm] = start.split(":").map(Number);
+    const [eh, em] = end.split(":").map(Number);
+    const sap = sh >= 12 ? "pm" : "am";
+    const eap = eh >= 12 ? "pm" : "am";
+    const s12 = (sh % 12) || 12;
+    const e12 = (eh % 12) || 12;
+    const sCore = sm ? s12 + ":" + pad(sm) : String(s12);
+    const eCore = em ? e12 + ":" + pad(em) : String(e12);
+    if (sap === eap) return sCore + " – " + eCore + eap;
+    return sCore + sap + " – " + eCore + eap;
+  }
+
+  function startOfGymWeek(d) {
+    const x = startOfDay(typeof d === "string" ? parseDateStr(d) : d);
+    const day = x.getDay();
+    const off = day === 0 ? -6 : 1 - day;
+    x.setDate(x.getDate() + off);
+    return x;
+  }
+
   function combine(dateStr, timeStr) {
     const d = parseDateStr(dateStr);
     const mins = minutesSinceMidnight(timeStr || "00:00");
@@ -327,34 +359,34 @@
     });
 
     const plan = data.gymPlan;
-    if (plan && plan.assignments) {
-      if (!hidden.has(plan.categoryId || "cat-gym")) {
-        const cs = plan.startDate ? parseDateStr(plan.startDate) : start;
-        const ce = plan.endDate ? parseDateStr(plan.endDate) : end;
-        const from = cs > start ? cs : start;
-        const to = ce < end ? ce : end;
-        if (from <= to) {
-          eachDate(from, to, (d) => {
-            const name = plan.assignments[String(d.getDay())] || plan.assignments[d.getDay()];
-            if (!name) return;
-            const ds = toDateStr(d);
-            if (inSkip(plan.skipDates, ds)) return;
-            items.push(occBase({
-              id: "gym:" + ds,
-              source: "gym",
-              title: name,
-              categoryId: plan.categoryId || "cat-gym",
-              date: ds,
-              startTime: plan.startTime || "17:00",
-              endTime: plan.endTime || "18:30",
-              location: plan.location || "",
-              notes: plan.notes || "",
-              reminderMinutes: plan.reminderMinutes,
-              gymName: name
-            }));
-          });
-        }
-      }
+    if (plan && plan.weeks && !hidden.has(plan.categoryId || "cat-gym")) {
+      const sessions = ["Push", "Pull", "Legs", "Bonus"];
+      Object.keys(plan.weeks).forEach((weekKey) => {
+        const week = plan.weeks[weekKey] || {};
+        sessions.forEach((name) => {
+          const slot = week[name];
+          const ds = typeof slot === "string" ? slot : (slot && slot.date);
+          if (!ds) return;
+          const d = parseDateStr(ds);
+          if (!d || d < start || d > end) return;
+          const dow = d.getDay();
+          if (dow === 0 || dow === 6) return;
+          if (inSkip(plan.skipDates, ds)) return;
+          items.push(occBase({
+            id: "gym:" + name.toLowerCase() + ":" + ds,
+            source: "gym",
+            title: name,
+            categoryId: plan.categoryId || "cat-gym",
+            date: ds,
+            startTime: (typeof week[name] === "object" ? (week[name].startTime || "") : (plan.startTime || "")),
+            endTime: (typeof week[name] === "object" ? (week[name].endTime || "") : (plan.endTime || "")),
+            allDay: !(typeof week[name] === "object" ? (week[name].startTime || "") : (plan.startTime || "")),
+            location: plan.location || "",
+            notes: name === "Bonus" ? "Bonus session" : "",
+            gymName: name
+          }));
+        });
+      });
     }
 
     data.events.forEach((ev) => {
@@ -487,8 +519,8 @@
 
   global.LLCStore = {
     KEY, WEEKDAYS, WEEKDAYS_LONG, MONTHS,
-    pad, uid, toDateStr, parseDateStr, startOfDay, addDays, startOfWeek, endOfWeek,
-    startOfMonth, daysInMonth, minutesSinceMidnight, formatTime, formatTimeCompact, formatTimeRangeCompact, formatDateNice,
+    pad, uid, toDateStr, parseDateStr, startOfDay, addDays, startOfWeek, endOfWeek, startOfGymWeek,
+    startOfMonth, daysInMonth, minutesSinceMidnight, formatTime, formatTimeCompact, formatTimeRangeCompact, formatGCalTime, formatGCalRange, formatDateNice,
     combine, eachDate, defaultState,
     load, save, get, replace, update, categoryById,
     getOccurrencesInRange, exportJSON, importJSON, clearAll,

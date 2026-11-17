@@ -11,8 +11,11 @@
     cursor: new Date(),
     hiddenCats: new Set(),
     taskFilter: "open",
-    sidebarOpen: false
+    sidebarOpen: false,
+    gymWeek: null
   };
+
+  const hubMotion = { running: false, raf: 0, nodes: [], onMove: null, onResize: null, mouse: { x: 0, y: 0, inside: false } };
 
   let notified = new Set();
   try { notified = new Set(JSON.parse(sessionStorage.getItem("llc-notified") || "[]")); } catch (e) { notified = new Set(); }
@@ -150,6 +153,11 @@
     if (view) view.hidden = false;
     renderCatFilters();
     document.getElementById("app").classList.toggle("is-home", ui.page === "home");
+    if (ui.page === "home") {
+      if (!hubMotion.running) startHubMotion();
+    } else {
+      stopHubMotion();
+    }
     if (ui.page === "calendar") renderCalendar();
     else if (ui.page === "agenda") renderAgendaPage();
     else if (ui.page === "classes") renderClassesPage();
@@ -175,10 +183,6 @@
     if (ui.mode === "month") board.innerHTML = monthHTML();
     else if (ui.mode === "week") board.innerHTML = timeCalHTML("week");
     else board.innerHTML = timeCalHTML("day");
-    if (ui.mode !== "month") {
-      const scroll = board.querySelector(".timed-scroll");
-      if (scroll) scroll.scrollTop = 7 * getHourH() - 8;
-    }
     renderSidePanel();
   }
 
@@ -208,8 +212,9 @@
         html += '<div class="day-num">' + d.getDate() + "</div>";
         const max = 3;
         items.slice(0, max).forEach(function (it) {
-          html += '<button type="button" class="evt-pill is-short" data-act="open-occ" data-id="' + esc(it.id) + '" style="--c:' + esc(catColor(it.categoryId)) + '">' +
-            '<span class="dot"></span>' + esc(shortTitle(it)) + "</button>";
+          const taskClass = it.source === "task" ? " is-task" + (it.done ? " is-done" : "") : " is-short";
+          html += '<button type="button" class="evt-pill' + taskClass + '" data-act="open-occ" data-id="' + esc(it.id) + '" style="--c:' + esc(catColor(it.categoryId)) + '">' +
+            (it.source === "task" ? "" : '<span class="dot"></span>') + esc(shortTitle(it)) + "</button>";
         });
         if (items.length > max) {
           html += '<button type="button" class="more-btn" data-act="open-day" data-date="' + ds + '">+' + (items.length - max) + " more</button>";
@@ -237,6 +242,32 @@
     return sorted;
   }
 
+  function visibleRange(dayDates) {
+    const DEF_START = 7 * 60 + 30;
+    const DEF_END = 22 * 60 + 30;
+    let start = DEF_START, end = DEF_END;
+    dayDates.forEach(function (d) {
+      S.getOccurrencesInRange(d, d, { hiddenCats: ui.hiddenCats }).forEach(function (it) {
+        if (it.allDay || !it.startTime) return;
+        const a = S.minutesSinceMidnight(it.startTime);
+        const b = it.endTime ? S.minutesSinceMidnight(it.endTime) : a + 60;
+        if (a < start) start = Math.floor(a / 30) * 30;
+        if (b > end) end = Math.ceil(b / 30) * 30;
+      });
+    });
+    start = Math.max(0, start);
+    end = Math.min(24 * 60, Math.max(end, start + 60));
+    return { start: start, end: end };
+  }
+
+  function gutterLabel(mins) {
+    const h = Math.floor(mins / 60) % 24;
+    const m = mins % 60;
+    const ap = h >= 12 ? "PM" : "AM";
+    const h12 = (h % 12) || 12;
+    return m ? h12 + ":" + S.pad(m) + " " + ap : h12 + " " + ap;
+  }
+
   function timeCalHTML(kind) {
     const isWeek = kind === "week";
     const start = isWeek ? S.startOfWeek(ui.cursor) : S.startOfDay(ui.cursor);
@@ -244,10 +275,15 @@
     const dayDates = [];
     for (let i = 0; i < days; i++) dayDates.push(S.addDays(start, i));
     const todayStr = S.toDateStr(new Date());
-    const hourH = getHourH();
     const now = new Date();
+    const range = visibleRange(dayDates);
+    const span = range.end - range.start;
 
-    let html = '<div class="time-cal is-' + kind + '">';
+    function yPct(mins) {
+      return ((mins - range.start) / span) * 100;
+    }
+
+    let html = '<div class="time-cal is-' + kind + '" data-vis-start="' + range.start + '" data-vis-end="' + range.end + '">';
     html += '<div class="time-head"><div class="gutter"></div>';
     dayDates.forEach(function (d) {
       const ds = S.toDateStr(d);
@@ -266,7 +302,8 @@
       allDayByDay.forEach(function (items) {
         html += '<div class="allday-cell">';
         items.forEach(function (it) {
-          html += '<button type="button" class="evt-pill" data-act="open-occ" data-id="' + esc(it.id) + '" style="--c:' + esc(catColor(it.categoryId)) + '">' + esc(shortTitle(it)) + "</button>";
+          const taskClass = it.source === "task" ? " is-task" + (it.done ? " is-done" : "") : "";
+          html += '<button type="button" class="evt-pill' + taskClass + '" data-act="open-occ" data-id="' + esc(it.id) + '" style="--c:' + esc(catColor(it.categoryId)) + '">' + esc(shortTitle(it)) + "</button>";
         });
         html += "</div>";
       });
@@ -275,11 +312,17 @@
 
     html += '<div class="timed-scroll"><div class="timed-body">';
     html += '<div class="hours">';
-    for (let h = 0; h < 24; h++) {
-      const label = S.formatTime(S.pad(h) + ":00").replace(":00 ", " ");
-      html += '<div class="hour-line" style="top:' + (h * hourH) + 'px"></div>';
-      html += '<div class="hour-label" style="top:' + (h * hourH) + 'px">' + (h === 0 ? "" : esc(label)) + "</div>";
-    }
+    const marks = [];
+    if (range.start % 60 !== 0) marks.push(range.start);
+    for (let m = Math.ceil(range.start / 60) * 60; m <= range.end; m += 60) marks.push(m);
+    if (range.end % 60 !== 0 && marks[marks.length - 1] !== range.end) marks.push(range.end);
+    marks.forEach(function (m, i) {
+      const top = yPct(m);
+      const edge = i === 0 ? " is-start" : (i === marks.length - 1 ? " is-end" : "");
+      html += '<div class="hour-line' + edge + '" style="top:' + top + '%"></div>';
+      const tooClose = (m !== range.start && Math.abs(m - range.start) < 50) || (m !== range.end && Math.abs(m - range.end) < 50);
+      if (!tooClose) html += '<div class="hour-label' + edge + '" style="top:' + top + '%">' + esc(gutterLabel(m)) + "</div>";
+    });
     html += "</div>";
 
     dayDates.forEach(function (d) {
@@ -289,15 +332,17 @@
       );
       html += '<div class="day-col" data-act="add-at" data-date="' + ds + '">';
       if (ds === todayStr) {
-        const top = (now.getHours() * 60 + now.getMinutes()) / 60 * hourH;
-        html += '<div class="now-line" style="top:' + top + 'px"></div>';
+        const nowMin = now.getHours() * 60 + now.getMinutes();
+        if (nowMin >= range.start && nowMin <= range.end) {
+          html += '<div class="now-line" style="top:' + yPct(nowMin) + '%"></div>';
+        }
       }
       items.forEach(function (it) {
         const startMin = S.minutesSinceMidnight(it.startTime);
         const endMin = it.endTime ? S.minutesSinceMidnight(it.endTime) : startMin + 60;
-        const dur = Math.max(endMin - startMin, 25);
-        const top = (startMin / 60) * hourH;
-        const height = (dur / 60) * hourH;
+        const dur = Math.max(endMin - startMin, 15);
+        const top = yPct(startMin);
+        const height = (dur / span) * 100;
         const width = 100 / it._cols;
         const left = width * it._col;
         const detailed = kind === "day";
@@ -305,14 +350,19 @@
         if (detailed) {
           if (it.location) descBits.push(it.location);
           if (it.notes) descBits.push(it.notes);
-          if (it.source === "task") descBits.push("Assignment" + (it.done ? " (done)" : ""));
+          if (it.source === "task") descBits.push("Homework" + (it.done ? " (done)" : ""));
         }
-        var sty = '--c:' + catColor(it.categoryId) + ';top:' + top + 'px;height:' + Math.max(height, 22) + 'px;left:calc(' + left + '% + 2px);width:calc(' + width + '% - 5px);right:auto;';
-        html += '<button type="button" class="evt-block' + (detailed ? ' is-detailed' : '') + '" data-act="open-occ" data-id="' + esc(it.id) + '" style="' + sty + '">' +
-          '<span class="ttl">' + (detailed ? esc(it.title) : esc(shortTitle(it))) + "</span>" +
-          '<span class="t">' + esc(timeLabelCompact(it)) + "</span>" +
-          (descBits.length ? '<span class="desc">' + esc(descBits.join(" · ")) + "</span>" : "") +
-          "</button>";
+        const isShort = !detailed && dur < 40;
+        const sty = "--c:" + catColor(it.categoryId) + ";top:" + top + "%;height:calc(" + height + "% - 2px);left:calc(" + left + "% + 2px);width:calc(" + width + "% - 4px);right:auto;";
+        html += '<button type="button" class="evt-block' + (detailed ? " is-detailed" : "") + (isShort ? " is-short" : "") + '" data-act="open-occ" data-id="' + esc(it.id) + '" style="' + sty + '">';
+        if (isShort) {
+          html += '<span class="ttl">' + esc(shortTitle(it)) + ", " + esc(S.formatGCalTime(it.startTime)) + "</span>";
+        } else {
+          html += '<span class="ttl">' + (detailed ? esc(it.title) : esc(shortTitle(it))) + "</span>";
+          html += '<span class="t">' + esc(S.formatGCalRange(it.startTime, it.endTime)) + "</span>";
+        }
+        if (descBits.length) html += '<span class="desc">' + esc(descBits.join(" · ")) + "</span>";
+        html += "</button>";
       });
       html += "</div>";
     });
@@ -321,19 +371,38 @@
     return html;
   }
 
-
-  function occRow(it, extra) {
+  function occRow(it, extra, whenText) {
     return '<button type="button" class="agenda-item" data-act="open-occ" data-id="' + esc(it.id) + '">' +
       '<span class="bar" style="--c:' + esc(catColor(it.categoryId)) + '"></span>' +
       '<span class="meta"><span class="title">' + esc(it.title) + (extra || "") + "</span>" +
-      '<span class="sub">' + esc(timeLabel(it) + (it.location ? " · " + it.location : "") + " · " + catName(it.categoryId)) + "</span></span></button>";
+      '<span class="sub">' + esc(whenText || timeLabel(it)) + "</span></span></button>";
+  }
+
+  function hideSpringLists() {
+    return S.toDateStr(new Date()) < "2027-01-01";
+  }
+
+  function isSpringClassOcc(it) {
+    if (it.source !== "class" || !it.classId) return false;
+    const cls = S.get().classes.find(function (c) { return c.id === it.classId; });
+    return !!(cls && cls.startDate && cls.startDate >= "2027-01-01");
+  }
+
+  function nextWhenLabel(it, todayStr) {
+    if (it.date === todayStr) return timeLabel(it);
+    const d = S.parseDateStr(it.date);
+    const dateBit = S.WEEKDAYS[d.getDay()] + ", " + S.MONTHS[d.getMonth()].slice(0, 3) + " " + d.getDate();
+    if (it.allDay || !it.startTime) return dateBit + " · All day";
+    return dateBit + " · " + S.formatTimeRangeCompact(it.startTime, it.endTime || it.startTime);
   }
 
   function upcomingWindow() {
     const now = new Date();
     const from = S.addDays(S.startOfDay(now), -1);
     const to = S.addDays(now, 90);
-    return S.getOccurrencesInRange(from, to, { hiddenCats: ui.hiddenCats }).sort(compareOcc);
+    let items = S.getOccurrencesInRange(from, to, { hiddenCats: ui.hiddenCats }).sort(compareOcc);
+    if (hideSpringLists()) items = items.filter(function (it) { return !isSpringClassOcc(it); });
+    return items;
   }
 
   function renderSidePanel() {
@@ -352,17 +421,16 @@
     });
     const next = future.filter(function (it) { return !(it.source === "task" && it.done); })[0] || null;
     const todayItems = all.filter(function (it) { return it.date === todayStr; }).sort(compareOcc);
-    const soonEnd = S.toDateStr(S.addDays(now, 16));
+    const soonEnd = S.toDateStr(S.addDays(now, 7));
     const weekItems = all.filter(function (it) {
       return it.date > todayStr && it.date <= soonEnd && it !== next;
     }).sort(compareOcc);
-    const farther = all.filter(function (it) { return it.date > soonEnd; }).sort(compareOcc);
 
-    let html = '<p class="panel-kicker">At a glance</p><h2 class="panel-title">' + esc(S.formatDateNice(now)) + "</h2>";
+    let html = '<h2 class="panel-title">' + esc(S.formatDateNice(now)) + "</h2>";
     html += '<div class="panel-section happening"><h3>Happening now / Next up</h3>';
-    if (!happening.length && !next) html += '<p class="empty-note">Nothing coming up in the next stretch.</p>';
+    if (!happening.length && !next) html += '<p class="empty-note">Nothing coming up.</p>';
     happening.forEach(function (it) { html += occRow(it, '<span class="badge-now">Now</span>'); });
-    if (next) html += occRow(next, "");
+    if (next) html += occRow(next, "", nextWhenLabel(next, todayStr));
     html += "</div>";
 
     html += '<div class="panel-section"><h3>Today</h3>';
@@ -371,11 +439,10 @@
     html += "</div>";
 
     html += '<div class="panel-section"><h3>This week / upcoming soon</h3>';
-    const upcoming = weekItems.length ? weekItems : farther.slice(0, compact ? 10 : 24);
-    if (!upcoming.length) html += '<p class="empty-note">Nothing else is scheduled yet.</p>';
+    if (!weekItems.length) html += '<p class="empty-note">Nothing scheduled this week.</p>';
     else {
       let last = "";
-      upcoming.slice(0, compact ? 12 : 40).forEach(function (it) {
+      weekItems.forEach(function (it) {
         if (it.date !== last) {
           html += '<div class="agenda-date">' + esc(S.formatDateNice(it.date)) + "</div>";
           last = it.date;
@@ -389,7 +456,7 @@
 
   function renderAgendaPage() {
     document.getElementById("view-agenda").innerHTML =
-      '<div class="page-head"><div><h2>Agenda</h2><p>What is next, sorted by how soon it happens.</p></div></div>' +
+      '<div class="page-head"><div><h2>Agenda</h2></div></div>' +
       '<div class="card">' + rankedPanelHTML(false) + "</div>";
   }
 
@@ -399,7 +466,7 @@
 
   function renderClassesPage() {
     const classes = S.get().classes;
-    let html = '<div class="page-head"><div><h2>School</h2><p>Fall 2026 and Spring 2027 at Broward College are preloaded. Times are approximate — edit anything that looks off.</p></div>' +
+    let html = '<div class="page-head"><div><h2>School</h2></div>' +
       '<button class="primary-btn" type="button" data-act="add-class">Add class</button></div>';
     if (!classes.length) {
       html += '<div class="card"><p class="empty-note">No classes yet. Add a semester schedule and it will fill the calendar.</p></div>';
@@ -420,33 +487,134 @@
     document.getElementById("view-classes").innerHTML = html;
   }
 
-  function renderGymPage() {
-    const plan = S.get().gymPlan;
-    const workouts = S.get().workouts.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
-    let html = '<div class="page-head"><div><h2>Gym</h2><p>Pick a weekly split and it will show up on the calendar. Log lifts from any gym session.</p></div>' +
-      '<div class="row-actions"><button class="primary-btn" type="button" data-act="edit-gym">' + (plan ? "Edit split" : "Set up split") + "</button>" +
-      (plan ? '<button class="danger-btn" type="button" data-act="clear-gym">Clear plan</button>' : "") + "</div></div>";
+  const GYM_SESSIONS = ["Push", "Pull", "Legs", "Bonus"];
 
-    html += '<div class="card">';
-    if (!plan || !plan.assignments) {
-      html += '<p class="empty-note">No gym plan yet. Choose Push/Pull/Legs, Upper/Lower, or a custom split.</p>';
-    } else {
-      const label = plan.split === "ppl" ? "Push / Pull / Legs" : plan.split === "upper-lower" ? "Upper / Lower" : "Custom split";
-      html += "<h3>" + esc(label) + "</h3><div class=\"chip-row\">";
-      for (let d = 0; d < 7; d++) {
-        const name = plan.assignments[d] || plan.assignments[String(d)];
-        if (name) html += '<span class="chip">' + esc(S.WEEKDAYS[d] + " · " + name) + "</span>";
-      }
-      html += "</div>";
-      html += '<p class="muted" style="margin-top:10px">' + esc((plan.startTime ? S.formatTime(plan.startTime) + " – " + S.formatTime(plan.endTime) : "") +
-        (plan.startDate ? " · from " + plan.startDate : "") + (plan.endDate ? " to " + plan.endDate : "")) + "</p>";
+  function ensureGymPlan(data) {
+    if (!data.gymPlan) {
+      data.gymPlan = { startTime: "", endTime: "", location: "", weeks: {}, categoryId: "cat-gym", skipDates: [] };
     }
+    if (!data.gymPlan.weeks) data.gymPlan.weeks = {};
+    return data.gymPlan;
+  }
+
+  function gymSlot(week, name) {
+    const slot = week && week[name];
+    if (!slot) return null;
+    if (typeof slot === "string") return { date: slot, startTime: "", endTime: "" };
+    return { date: slot.date, startTime: slot.startTime || "", endTime: slot.endTime || "" };
+  }
+
+  function writeGymSlot(week, name, slot) {
+    if (!slot || !slot.date) delete week[name];
+    else if (!slot.startTime) week[name] = { date: slot.date, startTime: "", endTime: "" };
+    else week[name] = { date: slot.date, startTime: slot.startTime, endTime: slot.endTime || "" };
+  }
+
+  function assignGymSession(session, dateStr) {
+    if (GYM_SESSIONS.indexOf(session) === -1) return;
+    const d = S.parseDateStr(dateStr);
+    if (!d) return;
+    const dow = d.getDay();
+    if (dow === 0 || dow === 6) return;
+    const key = S.toDateStr(S.startOfGymWeek(d));
+    S.update(function (data) {
+      const plan = ensureGymPlan(data);
+      const week = plan.weeks[key] || {};
+      GYM_SESSIONS.forEach(function (n) {
+        const sl = gymSlot(week, n);
+        if (n !== session && sl && sl.date === dateStr) delete week[n];
+      });
+      const cur = gymSlot(week, session);
+      week[session] = { date: dateStr, startTime: (cur && cur.startTime) || "", endTime: (cur && cur.endTime) || "" };
+      plan.weeks[key] = week;
+    });
+    render();
+  }
+
+  function unassignGymSession(session, dateStr) {
+    const key = S.toDateStr(S.startOfGymWeek(dateStr || (ui.gymWeek || new Date())));
+    S.update(function (data) {
+      if (!data.gymPlan || !data.gymPlan.weeks || !data.gymPlan.weeks[key]) return;
+      delete data.gymPlan.weeks[key][session];
+    });
+    render();
+  }
+
+  function saveGymSlotTime(session, dateStr, startTime, endTime) {
+    const key = S.toDateStr(S.startOfGymWeek(dateStr));
+    S.update(function (data) {
+      const plan = ensureGymPlan(data);
+      const week = plan.weeks[key] || {};
+      week[session] = { date: dateStr, startTime: startTime || "", endTime: (startTime && endTime) ? endTime : (startTime ? "" : "") };
+      plan.weeks[key] = week;
+    });
+    render();
+  }
+
+  function openGymSlotEditor(session, dateStr) {
+    const mon = S.toDateStr(S.startOfGymWeek(dateStr));
+    const plan = S.get().gymPlan || {};
+    const week = (plan.weeks && plan.weeks[mon]) || {};
+    const slot = gymSlot(week, session) || { date: dateStr, startTime: "", endTime: "" };
+    openModal(session,
+      "<p class=\"muted\">" + esc(S.formatDateNice(dateStr)) + "</p>" +
+      '<div class="form-grid">' +
+        field("Start (optional)", '<input type="time" id="g-start" value="' + esc(slot.startTime) + '" />') +
+        field("End (optional)", '<input type="time" id="g-end" value="' + esc(slot.endTime) + '" />') +
+      "</div>",
+      '<button class="ghost-btn" type="button" data-act="close-modal">Close</button>' +
+      '<button class="danger-btn" type="button" data-act="gym-unassign" data-session="' + esc(session) + '" data-date="' + esc(dateStr) + '">Remove</button>' +
+      '<button class="secondary-btn" type="button" data-act="log-workout" data-date="' + esc(dateStr) + '" data-name="' + esc(session) + '">Log workout</button>' +
+      '<button class="primary-btn" type="button" data-act="save-gym-time" data-session="' + esc(session) + '" data-date="' + esc(dateStr) + '">Save</button>',
+      { type: "gym-slot", session: session, date: dateStr }
+    );
+  }
+
+  function renderGymPage() {
+    const weekStart = S.startOfGymWeek(ui.gymWeek || new Date());
+    const key = S.toDateStr(weekStart);
+    const plan = S.get().gymPlan || {};
+    const week = (plan.weeks && plan.weeks[key]) || {};
+    const workouts = S.get().workouts.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+    const required = ["Push", "Pull", "Legs"].filter(function (n) { return !!gymSlot(week, n); }).length;
+    const hasBonus = !!gymSlot(week, "Bonus");
+    const progress = required + "/3 this week" + (hasBonus ? " (+bonus)" : "");
+    const thisWeek = S.toDateStr(S.startOfGymWeek(new Date())) === key;
+
+    let html = '<div class="page-head"><div><h2>Gym</h2></div></div>';
+    html += '<div class="gym-week-bar">';
+    html += '<button class="ghost-btn" type="button" data-act="gym-week" data-dir="-1">Previous</button>';
+    html += "<div><h3>Week of " + esc(S.MONTHS[weekStart.getMonth()] + " " + weekStart.getDate()) + "</h3>";
+    html += '<div class="gym-progress">' + esc(progress) + "</div></div>";
+    html += '<div class="row-actions">';
+    if (!thisWeek) html += '<button class="ghost-btn" type="button" data-act="gym-week" data-dir="0">This week</button>';
+    html += '<button class="ghost-btn" type="button" data-act="gym-week" data-dir="1">Next</button></div></div>';
+
+    html += '<div class="gym-grid">';
+    html += '<div></div>';
+    for (let i = 0; i < 5; i++) {
+      const d = S.addDays(weekStart, i);
+      html += '<div class="hd">' + esc(S.WEEKDAYS[d.getDay()] + " " + d.getDate()) + "</div>";
+    }
+    GYM_SESSIONS.forEach(function (name) {
+      const bonus = name === "Bonus";
+      const slot = gymSlot(week, name);
+      html += '<div class="lab' + (bonus ? " is-bonus" : "") + '" draggable="true" data-gym-drag="' + name + '" data-session="' + name + '">' + esc(name) + "</div>";
+      for (let i = 0; i < 5; i++) {
+        const d = S.addDays(weekStart, i);
+        const ds = S.toDateStr(d);
+        const on = slot && slot.date === ds;
+        const cls = "cell" + (on ? " is-on" : "") + (bonus ? " is-bonus" : "");
+        const act = on ? "gym-edit" : "gym-assign";
+        html += '<button type="button" class="' + cls + '" data-act="' + act + '" data-session="' + name + '" data-date="' + ds + '"></button>';
+      }
+    });
     html += "</div>";
 
-    html += '<div class="page-head" style="margin-top:22px"><div><h2>Workout log</h2><p>Progress is grouped by exercise name.</p></div>' +
+    html += '<div class="page-head" style="margin-top:12px"><div><h2>Workout log</h2></div>' +
       '<button class="secondary-btn" type="button" data-act="log-workout">Log workout</button></div>';
     if (!workouts.length) {
-      html += '<div class="card"><p class="empty-note">No workouts logged yet.</p></div>';
+      html += '<p class="empty-note">No workouts logged yet.</p>';
     } else {
       html += '<div class="card-list">';
       workouts.forEach(function (w) {
@@ -465,7 +633,7 @@
       if (names.length) {
         html += '<div class="card" style="margin-top:14px"><h3>Exercise progress</h3>';
         names.forEach(function (n) {
-          html += '<button class="occ-row" type="button" data-act="ex-history" data-name="' + esc(n) + '"><span class="bar" style="--c:#0CA678"></span><span class="meta"><span class="title">' + esc(n) + '</span><span class="sub">View history</span></span></button>';
+          html += '<button class="occ-row" type="button" data-act="ex-history" data-name="' + esc(n) + '"><span class="bar" style="--c:#E25A3C"></span><span class="meta"><span class="title">' + esc(n) + '</span><span class="sub">View history</span></span></button>';
         });
         html += "</div>";
       }
@@ -486,8 +654,8 @@
       if (filter === "overdue") return !t.done && t.dueDate && t.dueDate < todayStr;
       return true;
     });
-    let html = '<div class="page-head"><div><h2>Tasks</h2><p>Assignments and to-dos appear on the calendar on their due dates.</p></div>' +
-      '<button class="primary-btn" type="button" data-act="add-task">Add task</button></div>';
+    let html = '<div class="page-head"><div><h2>Homework</h2></div>' +
+      '<button class="primary-btn" type="button" data-act="add-task">Add</button></div>';
     html += '<div class="filter-bar">';
     [["open", "Open"], ["overdue", "Overdue"], ["done", "Done"], ["all", "All"]].forEach(function (pair) {
       html += '<button type="button" class="seg-chip' + (filter === pair[0] ? " is-on" : "") + '" data-act="task-filter" data-filter="' + pair[0] + '">' + pair[1] + "</button>";
@@ -515,7 +683,7 @@
     const now = new Date();
     const items = S.getOccurrencesInRange(S.addDays(now, -14), S.addDays(now, 120), { hiddenCats: new Set() })
       .filter(function (it) { return it.categoryId === categoryId; });
-    let html = '<div class="page-head"><div><h2>' + esc(title) + '</h2><p>Items in this category, soonest first.</p></div>' +
+    let html = '<div class="page-head"><div><h2>' + esc(title) + "</h2></div>" +
       '<button class="primary-btn" type="button" data-act="add-event" data-cat="' + esc(categoryId) + '">Add</button></div>';
     if (!items.length) html += '<div class="card"><p class="empty-note">Nothing in ' + esc(title) + " yet.</p></div>";
     else {
@@ -541,12 +709,8 @@
 
   function renderSettingsPage() {
     const st = S.get();
-    let html = '<div class="page-head"><div><h2>Settings</h2><p>This site runs in your browser. Export a backup if you switch devices.</p></div></div>';
+    let html = '<div class="page-head"><div><h2>Settings</h2></div></div>';
     html += '<div class="settings-stack">';
-    html += '<div class="card"><div class="setting-row"><div><h3>Reminders</h3><p class="muted">Optional browser notifications a few minutes before an item, only while this tab is open. Silent — no sound.</p></div>' +
-      '<button class="secondary-btn" type="button" data-act="toggle-reminders">' + (st.settings.remindersEnabled ? "On — turn off" : "Off — turn on") + "</button></div>" +
-      '<label class="field" style="margin-top:12px;max-width:200px">Minutes before' +
-      '<input type="number" min="0" max="180" id="reminder-mins" value="' + esc(st.settings.defaultReminderMinutes) + '" /></label></div>';
     html += '<div class="card"><h3>Categories</h3>';
     st.categories.forEach(function (c) {
       html += '<div class="cat-edit"><input type="color" data-act="cat-color" data-id="' + esc(c.id) + '" value="' + esc(toHex(c.color)) + '" />' +
@@ -555,18 +719,11 @@
         "</div>";
     });
     html += '<button class="ghost-btn" type="button" data-act="add-cat" style="margin-top:10px">Add category</button></div>';
-    html += '<div class="card"><h3>Backup</h3><div class="row-actions" style="margin-top:10px">' +
-      '<button class="secondary-btn" type="button" data-act="export-json">Export JSON</button>' +
-      '<button class="ghost-btn" type="button" data-act="import-json">Import JSON</button>' +
-      '<button class="secondary-btn" type="button" data-act="export-ics">Export .ics</button>' +
-      '<button class="ghost-btn" type="button" data-act="import-ics">Import .ics</button>' +
-      "</div></div>";
-    html += '<div class="card"><h3>Reset</h3><p class="muted">Clears gym logs and your edits, then restores the preloaded Fall 2026 and Spring 2027 schedules.</p>' +
+    html += '<div class="card"><h3>Reset</h3>' +
       '<button class="danger-btn" type="button" data-act="reset-data" style="margin-top:10px">Reset data</button></div>';
     html += "</div>";
     document.getElementById("view-settings").innerHTML = html;
   }
-
 
   const modal = document.getElementById("modal");
   const modalTitle = document.getElementById("modal-title");
@@ -776,40 +933,39 @@
     const opts = '<option value="">No class</option>' + S.get().classes.map(function (c) {
       return '<option value="' + esc(c.id) + '"' + (c.id === t.classId ? " selected" : "") + ">" + esc(c.name) + "</option>";
     }).join("");
-    openModal(existing ? "Edit task" : "Add task",
+    openModal(existing ? "Edit homework" : "Add homework",
       '<div class="form-grid">' +
         field("Title", '<input type="text" id="f-name" value="' + esc(t.title) + '" />', true) +
-        field("Tied to class", "<select id=\"f-class\">" + opts + "</select>", true) +
+        field("Class", '<select id="f-class">' + opts + "</select>", true) +
         field("Due date", '<input type="date" id="f-date" value="' + esc(t.dueDate || "") + '" />') +
-        field("Due time (optional)", '<input type="time" id="f-time" value="' + esc(t.dueTime || "") + '" />') +
-        field("Notes", '<textarea id="f-notes">' + esc(t.notes || "") + "</textarea>", true) +
-        field("Reminder (minutes before)", '<input type="number" id="f-remind" min="0" max="180" value="' + esc(t.reminderMinutes == null ? "" : t.reminderMinutes) + '" />') +
+        (existing ? '<label class="field check-row span-2" style="flex-direction:row;align-items:center"><input type="checkbox" id="f-done"' + (t.done ? " checked" : "") + " /> Done</label>" : "") +
       "</div>",
       '<button class="ghost-btn" type="button" data-act="close-modal">Cancel</button>' +
       (existing ? '<button class="danger-btn" type="button" data-act="delete-task">Delete</button>' : "") +
-      '<button class="primary-btn" type="button" data-act="save-task">Save task</button>',
+      '<button class="primary-btn" type="button" data-act="save-task">Save</button>',
       { type: "task", id: existing && existing.id }
     );
   }
 
   function saveTask() {
     const title = val("f-name").trim();
-    if (!title) return toast("Give the task a title.");
+    if (!title) return toast("Give it a title.");
     const rec = {
       title: title,
       classId: val("f-class") || "",
       dueDate: val("f-date"),
-      dueTime: val("f-time"),
-      notes: val("f-notes"),
-      reminderMinutes: numOrNull(val("f-remind")),
+      dueTime: "",
+      notes: "",
       categoryId: "cat-classes",
       done: false
     };
+    const doneEl = document.getElementById("f-done");
+    if (doneEl) rec.done = !!doneEl.checked;
     S.update(function (data) {
       if (modalContext && modalContext.id) {
         const i = data.tasks.findIndex(function (t) { return t.id === modalContext.id; });
         if (i >= 0) {
-          rec.done = data.tasks[i].done;
+          if (!doneEl) rec.done = data.tasks[i].done;
           data.tasks[i] = Object.assign({}, data.tasks[i], rec);
         }
       } else {
@@ -818,89 +974,10 @@
       }
     });
     closeModal();
-    toast("Task saved.");
+    toast("Homework saved.");
     render();
   }
 
-
-  function openGymPlanForm() {
-    const plan = S.get().gymPlan || {
-      split: "ppl",
-      assignments: { 1: "Push", 3: "Pull", 5: "Legs" },
-      startDate: S.toDateStr(new Date()),
-      endDate: "",
-      startTime: "17:00",
-      endTime: "18:30",
-      location: "",
-      notes: "",
-      skipDates: [],
-      reminderMinutes: S.get().settings.defaultReminderMinutes,
-      categoryId: "cat-gym"
-    };
-    const assign = plan.assignments || {};
-    let assignHtml = "";
-    for (let d = 0; d < 7; d++) {
-      const cur = assign[d] || assign[String(d)] || "";
-      assignHtml += field(S.WEEKDAYS_LONG[d], '<input type="text" class="gym-day" data-day="' + d + '" value="' + esc(cur) + '" placeholder="Rest / off" />');
-    }
-    openModal("Gym split",
-      '<div class="form-grid">' +
-        field("Split", '<select id="f-split"><option value="ppl"' + (plan.split === "ppl" ? " selected" : "") + ">Push / Pull / Legs</option>" +
-          '<option value="upper-lower"' + (plan.split === "upper-lower" ? " selected" : "") + ">Upper / Lower</option>" +
-          '<option value="custom"' + (plan.split === "custom" ? " selected" : "") + ">Custom</option></select>", true) +
-        '<div class="span-2"><div class="sidebar-label">Assign workouts to days (leave blank to skip that day)</div><div class="form-grid">' + assignHtml + "</div></div>" +
-        field("Start time", '<input type="time" id="f-start" value="' + esc(plan.startTime || "17:00") + '" />') +
-        field("End time", '<input type="time" id="f-end" value="' + esc(plan.endTime || "18:30") + '" />') +
-        field("Start date", '<input type="date" id="f-from" value="' + esc(plan.startDate || "") + '" />') +
-        field("End date (optional)", '<input type="date" id="f-to" value="' + esc(plan.endDate || "") + '" />') +
-        field("Location", '<input type="text" id="f-loc" value="' + esc(plan.location || "") + '" />', true) +
-        field("Reminder (minutes before)", '<input type="number" id="f-remind" min="0" max="180" value="' + esc(plan.reminderMinutes == null ? "" : plan.reminderMinutes) + '" />') +
-        skipEditor(plan.skipDates) +
-      "</div>",
-      '<button class="ghost-btn" type="button" data-act="close-modal">Cancel</button>' +
-      '<button class="primary-btn" type="button" data-act="save-gym">Save plan</button>',
-      { type: "gym" }
-    );
-  }
-
-  function applySplitPreset(kind) {
-    const presets = {
-      ppl: { 1: "Push", 3: "Pull", 5: "Legs" },
-      "upper-lower": { 1: "Upper", 2: "Lower", 4: "Upper", 5: "Lower" }
-    };
-    const map = presets[kind] || {};
-    modal.querySelectorAll(".gym-day").forEach(function (inp) {
-      if (kind === "custom") return;
-      const d = inp.getAttribute("data-day");
-      inp.value = map[d] || map[Number(d)] || "";
-    });
-  }
-
-  function saveGymPlan() {
-    const assignments = {};
-    modal.querySelectorAll(".gym-day").forEach(function (inp) {
-      const v = inp.value.trim();
-      if (v) assignments[Number(inp.getAttribute("data-day"))] = v;
-    });
-    if (!Object.keys(assignments).length) return toast("Assign at least one training day.");
-    const plan = {
-      split: val("f-split") || "custom",
-      assignments: assignments,
-      startDate: val("f-from") || S.toDateStr(new Date()),
-      endDate: val("f-to") || "",
-      startTime: val("f-start") || "17:00",
-      endTime: val("f-end") || "18:30",
-      location: val("f-loc"),
-      notes: "",
-      skipDates: gatherSkips(),
-      reminderMinutes: numOrNull(val("f-remind")),
-      categoryId: "cat-gym"
-    };
-    S.update(function (data) { data.gymPlan = plan; });
-    closeModal();
-    toast("Gym plan added to the calendar.");
-    render();
-  }
 
   function openWorkoutLog(dateStr, name) {
     const date = dateStr || S.toDateStr(new Date());
@@ -1006,7 +1083,7 @@
       '<div class="onboard-actions">' +
         '<button class="primary-btn" type="button" data-act="add-event">Event</button>' +
         '<button class="secondary-btn" type="button" data-act="add-class">Class</button>' +
-        '<button class="secondary-btn" type="button" data-act="add-task">Task</button>' +
+        '<button class="secondary-btn" type="button" data-act="add-task">Homework</button>' +
         '<button class="secondary-btn" type="button" data-act="log-workout">Workout log</button>' +
       "</div>",
       '<button class="ghost-btn" type="button" data-act="close-modal">Cancel</button>'
@@ -1142,10 +1219,12 @@
     }
     if (act === "add-at") {
       if (e.target.closest(".evt-block")) return;
+      const cal = t.closest(".time-cal");
+      const visStart = cal ? Number(cal.getAttribute("data-vis-start")) : 7 * 60 + 30;
+      const visEnd = cal ? Number(cal.getAttribute("data-vis-end")) : 22 * 60 + 30;
       const rect = t.getBoundingClientRect();
-      const y = e.clientY - rect.top;
-      const hourH = getHourH();
-      const mins = Math.max(0, Math.min(24 * 60 - 30, Math.round((y / hourH) * 60 / 15) * 15));
+      const frac = Math.max(0, Math.min(1, (e.clientY - rect.top) / Math.max(1, rect.height)));
+      const mins = Math.max(0, Math.min(24 * 60 - 30, Math.round((visStart + frac * (visEnd - visStart)) / 15) * 15));
       const time = S.pad(Math.floor(mins / 60)) + ":" + S.pad(mins % 60);
       const end = mins + 60;
       const endTime = S.pad(Math.floor(end / 60) % 24) + ":" + S.pad(end % 60);
@@ -1229,12 +1308,38 @@
       return;
     }
     if (act === "task-filter") { ui.taskFilter = t.getAttribute("data-filter"); render(); return; }
-    if (act === "edit-gym") { openGymPlanForm(); return; }
-    if (act === "save-gym") { saveGymPlan(); return; }
-    if (act === "clear-gym") {
-      if (!window.confirm("Remove the gym plan from the calendar? Workout logs are kept.")) return;
-      S.update(function (d) { d.gymPlan = null; });
+    if (act === "gym-week") {
+      const dir = Number(t.getAttribute("data-dir"));
+      if (dir === 0) ui.gymWeek = S.startOfGymWeek(new Date());
+      else {
+        const cur = S.startOfGymWeek(ui.gymWeek || new Date());
+        ui.gymWeek = S.addDays(cur, 7 * dir);
+      }
       render();
+      return;
+    }
+    if (act === "gym-assign") {
+      assignGymSession(t.getAttribute("data-session"), t.getAttribute("data-date"));
+      return;
+    }
+    if (act === "gym-edit") {
+      openGymSlotEditor(t.getAttribute("data-session"), t.getAttribute("data-date"));
+      return;
+    }
+    if (act === "gym-unassign") {
+      unassignGymSession(t.getAttribute("data-session"), t.getAttribute("data-date"));
+      closeModal();
+      return;
+    }
+    if (act === "save-gym-time") {
+      const startT = val("g-start");
+      let endT = val("g-end");
+      if (startT && !endT) {
+        const m = S.minutesSinceMidnight(startT) + 60;
+        endT = S.pad(Math.floor(m / 60) % 24) + ":" + S.pad(m % 60);
+      }
+      saveGymSlotTime(t.getAttribute("data-session"), t.getAttribute("data-date"), startT, endT);
+      closeModal();
       return;
     }
     if (act === "log-workout") {
@@ -1338,6 +1443,112 @@ if (act === "toggle-reminders") {
     return window.matchMedia && window.matchMedia("(hover: none), (pointer: coarse)").matches;
   }
 
+  function startHubMotion() {
+    const hub = document.getElementById("hub");
+    if (!hub || hubMotion.running) return;
+    hubMotion.running = true;
+    const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const coarse = isCoarsePointer();
+    const nodeEls = Array.prototype.slice.call(hub.querySelectorAll(".hub-node"));
+
+    function measureRest() {
+      nodeEls.forEach(function (el) {
+        el.style.setProperty("--mx", "0px");
+        el.style.setProperty("--my", "0px");
+      });
+      hubMotion.nodes = nodeEls.map(function (el) {
+        const r = el.getBoundingClientRect();
+        return {
+          el: el,
+          name: el.getAttribute("data-spoke") || "",
+          cx: r.left + r.width / 2,
+          cy: r.top + r.height / 2,
+          mx: 0,
+          my: 0
+        };
+      });
+    }
+
+    function updateSpokes() {
+      const svg = hub.querySelector(".hub-spokes");
+      if (!svg) return;
+      const hr = hub.getBoundingClientRect();
+      svg.setAttribute("viewBox", "0 0 " + hr.width + " " + hr.height);
+      svg.setAttribute("width", String(hr.width));
+      svg.setAttribute("height", String(hr.height));
+      const cal = hubMotion.nodes.filter(function (n) { return n.name === "calendar"; })[0];
+      if (!cal) return;
+      const calX = cal.cx + cal.mx - hr.left;
+      const calY = cal.cy + cal.my - hr.top;
+      ["school", "events", "personal", "gym"].forEach(function (name) {
+        const n = hubMotion.nodes.filter(function (x) { return x.name === name; })[0];
+        const line = svg.querySelector('line[data-spoke="' + name + '"]');
+        if (!n || !line) return;
+        line.setAttribute("x1", String(calX));
+        line.setAttribute("y1", String(calY));
+        line.setAttribute("x2", String(n.cx + n.mx - hr.left));
+        line.setAttribute("y2", String(n.cy + n.my - hr.top));
+      });
+    }
+
+    function tick() {
+      if (!hubMotion.running) return;
+      const MAGNET_R = 120;
+      const MAX_D = 9;
+      const LERP = 0.1;
+      if (!reduced && !coarse) {
+        hubMotion.nodes.forEach(function (n) {
+          let tx = 0, ty = 0;
+          if (hubMotion.mouse.inside) {
+            const dx = hubMotion.mouse.x - n.cx;
+            const dy = hubMotion.mouse.y - n.cy;
+            const dist = Math.hypot(dx, dy);
+            if (dist < MAGNET_R && dist > 0.01) {
+              const pull = MAX_D * (1 - dist / MAGNET_R);
+              tx = (dx / dist) * pull;
+              ty = (dy / dist) * pull;
+            }
+          }
+          n.mx += (tx - n.mx) * LERP;
+          n.my += (ty - n.my) * LERP;
+          if (Math.abs(n.mx) < 0.05) n.mx = 0;
+          if (Math.abs(n.my) < 0.05) n.my = 0;
+          n.el.style.setProperty("--mx", n.mx + "px");
+          n.el.style.setProperty("--my", n.my + "px");
+        });
+      }
+      updateSpokes();
+      hubMotion.raf = requestAnimationFrame(tick);
+    }
+
+    measureRest();
+    updateSpokes();
+    hubMotion.onMove = function (e) {
+      if (e.pointerType === "touch" || e.pointerType === "pen") return;
+      if (coarse || reduced) return;
+      hubMotion.mouse.x = e.clientX;
+      hubMotion.mouse.y = e.clientY;
+      const hr = hub.getBoundingClientRect();
+      const pad = 140;
+      hubMotion.mouse.inside = e.clientX >= hr.left - pad && e.clientX <= hr.right + pad && e.clientY >= hr.top - pad && e.clientY <= hr.bottom + pad;
+    };
+    hubMotion.onResize = function () { measureRest(); updateSpokes(); };
+    window.addEventListener("pointermove", hubMotion.onMove, { passive: true });
+    window.addEventListener("resize", hubMotion.onResize);
+    hubMotion.raf = requestAnimationFrame(tick);
+  }
+
+  function stopHubMotion() {
+    if (!hubMotion.running) return;
+    hubMotion.running = false;
+    if (hubMotion.raf) cancelAnimationFrame(hubMotion.raf);
+    hubMotion.raf = 0;
+    if (hubMotion.onMove) window.removeEventListener("pointermove", hubMotion.onMove);
+    if (hubMotion.onResize) window.removeEventListener("resize", hubMotion.onResize);
+    hubMotion.onMove = null;
+    hubMotion.onResize = null;
+  }
+
   function bindHubPress() {
     document.addEventListener("pointerdown", function (e) {
       const node = e.target.closest && e.target.closest(".hub-node");
@@ -1356,6 +1567,31 @@ if (act === "toggle-reminders") {
   function bind() {
     document.addEventListener("click", onClick);
     bindHubPress();
+    document.addEventListener("dragstart", function (e) {
+      const lab = e.target.closest && e.target.closest("[data-gym-drag]");
+      if (!lab) return;
+      e.dataTransfer.setData("text/plain", lab.getAttribute("data-session") || lab.getAttribute("data-gym-drag"));
+      e.dataTransfer.effectAllowed = "move";
+    });
+    document.addEventListener("dragover", function (e) {
+      const cell = e.target.closest && e.target.closest("[data-act='gym-assign'], [data-act='gym-edit']");
+      if (!cell) return;
+      e.preventDefault();
+      cell.classList.add("is-drop");
+    });
+    document.addEventListener("dragleave", function (e) {
+      const cell = e.target.closest && e.target.closest(".cell");
+      if (cell) cell.classList.remove("is-drop");
+    });
+    document.addEventListener("drop", function (e) {
+      const cell = e.target.closest && e.target.closest("[data-act='gym-assign'], [data-act='gym-edit']");
+      if (!cell) return;
+      e.preventDefault();
+      cell.classList.remove("is-drop");
+      const session = e.dataTransfer.getData("text/plain");
+      const date = cell.getAttribute("data-date");
+      if (session && date) assignGymSession(session, date);
+    });
     document.querySelectorAll(".nav-btn").forEach(function (b) {
       b.addEventListener("click", function () { ui.page = b.getAttribute("data-page"); render(); });
     });
@@ -1436,7 +1672,6 @@ if (act === "toggle-reminders") {
       finishOnboard();
       ui.page = "gym";
       render();
-      openGymPlanForm();
     });
     document.getElementById("onboard-skip").addEventListener("click", finishOnboard);
 
@@ -1462,8 +1697,6 @@ if (act === "toggle-reminders") {
       const dlg = document.getElementById("onboarding");
       if (dlg && !dlg.open) dlg.showModal();
     }
-    setInterval(checkReminders, 20000);
-    checkReminders();
   }
 
   init();
