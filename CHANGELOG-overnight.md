@@ -59,3 +59,12 @@ Re-checked first: the live site loaded (200) with no console errors.
 - **Live browser tab title.** The tab now reads "AMH2010 · 55 min left — llc" while something is on, "College Algebra in 2 hr 40 min — llc" when the next thing today is coming up, and just "llc" otherwise. It updates every minute, even when the tab is in the background. Homework and all-day items are left out.
 
 **Tested:** headless Chromium at 1280×800, 1920×1080 and 390×844 (70 checks, all passing). No console errors and no horizontal overflow in month, week or day; nothing in the top bar clipped. Day and week fit 7:30 AM–10:30 PM with no scrolling. The hover slot appears, stays in its column, hides on leave, and clicking opens Add event at the shown time. Classes expand and collapse, the popover opens and closes, the picker and shortcuts (J / T) still work, and the home hub has its five icon circles and opens the calendar. Reduced motion turns off the slot's movement. No storage changes, so saved data is untouched.
+
+## Nov 17, 2026 — morning: month grid fits the screen
+
+- **Month view fills the window.** Week rows now share the leftover viewport height (`grid-template-rows: auto repeat(N, minmax(0, 1fr))`), with only as many rows as the month needs (4–6). The last week is no longer clipped. Desktop calendar pages do not scroll vertically.
+- Cells clip leftover pills and show a **+N more** link when a day has more than fits.
+- **Home** was removed from the sidebar. The **llc** title still opens the home hub, with a pointer cursor and a light fade on hover. Esc, keyboard shortcuts, and the mobile menu are unchanged.
+- The browser tab title stays **llc**. The live countdown in the tab ("AMH2010 · 55 min left") was removed; the favicon is unchanged.
+
+**Tested:** headless Chromium at 1280×800, 1920×1080, 1366×768 and 390×844, on November 2026 (5 rows) and a 6-row month. The last row's bottom edge stays inside the viewport, with no console errors. No storage changes, so saved data is untouched.

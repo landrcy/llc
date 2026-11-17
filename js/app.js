@@ -336,6 +336,7 @@
     if (view) view.hidden = false;
     renderCatFilters();
     document.getElementById("app").classList.toggle("is-home", ui.page === "home");
+    document.getElementById("app").classList.toggle("is-calendar", ui.page === "calendar");
     if (ui.page === "home") {
       if (!hubMotion.running) startHubMotion();
     } else {
@@ -349,7 +350,6 @@
     else if (ui.page === "personal") renderCategoryPage("personal", "cat-personal");
     else if (ui.page === "tasks") renderTasksPage();
     else if (ui.page === "settings") renderSettingsPage();
-    updateLiveTitle();
     closeSidebar();
   }
 
@@ -375,6 +375,7 @@
       board.classList.add(anim);
     }
     renderSidePanel();
+    if (ui.mode === "month") fitMonthPills();
   }
 
   function getHourH() {
@@ -382,14 +383,23 @@
     return parseFloat(v) || 56;
   }
 
+  function monthWeekCount(date) {
+    const first = S.startOfMonth(date);
+    const start = S.startOfWeek(first);
+    const next = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+    const days = Math.round((next - start) / 86400000);
+    return Math.max(4, Math.ceil(days / 7));
+  }
+
   function monthHTML() {
     const first = S.startOfMonth(ui.cursor);
     const gridStart = S.startOfWeek(first);
+    const rows = monthWeekCount(ui.cursor);
     const todayStr = S.toDateStr(new Date());
-    let html = '<div class="month-grid"><div class="month-weekdays">';
+    let html = '<div class="month-grid" style="--month-rows:' + rows + '"><div class="month-weekdays">';
     S.WEEKDAYS.forEach(function (w) { html += "<span>" + w + "</span>"; });
     html += "</div>";
-    for (let r = 0; r < 6; r++) {
+    for (let r = 0; r < rows; r++) {
       html += '<div class="month-row">';
       for (let c = 0; c < 7; c++) {
         const d = S.addDays(gridStart, r * 7 + c);
@@ -405,12 +415,11 @@
         html += '<div class="day-num">' + d.getDate() + "</div>";
         const open = !!(group && group.isOpen);
         const reveal = ui.revealDay === ds ? " is-reveal" : "";
-        const max = open ? 99 : 3;
         const nowMs = Date.now();
         const shown = open
           ? [group].concat(group.children, items.filter(function (it) { return !it._inGroup; }))
           : items;
-        shown.slice(0, max).forEach(function (it) {
+        shown.forEach(function (it) {
           if (it.source === "classgroup") {
             html += '<button type="button" class="evt-pill is-group' + (it.isOpen ? " is-open" : "") + (isPastOcc(it, nowMs) ? " is-past" : "") + reveal + '" data-act="toggle-classes" data-date="' + ds + '" aria-expanded="' + (it.isOpen ? "true" : "false") + '" style="--c:' + esc(catColor(it.categoryId)) + '">' +
               '<span class="pt">Classes</span><span class="pm">' + esc(S.formatTimeRangeCompact(it.startTime, it.endTime)) + "</span></button>";
@@ -422,15 +431,40 @@
           html += '<button type="button" class="evt-pill' + taskClass + child + past + '" data-act="open-occ" data-id="' + esc(it.id) + '" style="--c:' + esc(catColor(it.categoryId)) + '">' +
             esc(shortTitle(it)) + "</button>";
         });
-        if (shown.length > max) {
-          html += '<button type="button" class="more-btn" data-act="open-day" data-date="' + ds + '">+' + (shown.length - max) + " more</button>";
-        }
         html += "</div>";
       }
       html += "</div>";
     }
     html += "</div>";
     return html;
+  }
+
+  /* Hide pills that don't fit a sized-to-viewport month cell, and show "+N more". */
+  function fitMonthPills() {
+    document.querySelectorAll(".month-grid .day-cell").forEach(function (cell) {
+      const items = Array.from(cell.querySelectorAll(".evt-pill"));
+      let more = cell.querySelector(".more-btn");
+      if (more) more.remove();
+      items.forEach(function (el) { el.hidden = false; });
+      const limit = cell.clientHeight;
+      if (limit <= 0) return;
+      function overflows() { return cell.scrollHeight > limit + 1; }
+      if (!overflows()) return;
+      more = document.createElement("button");
+      more.type = "button";
+      more.className = "more-btn";
+      more.setAttribute("data-act", "open-day");
+      more.setAttribute("data-date", cell.getAttribute("data-date"));
+      cell.appendChild(more);
+      let visible = items.length;
+      while (visible > 0 && overflows()) {
+        visible--;
+        items[visible].hidden = true;
+      }
+      const hiddenCount = items.length - visible;
+      if (hiddenCount > 0) more.textContent = "+" + hiddenCount + " more";
+      else more.remove();
+    });
   }
 
   function packColumns(items) {
@@ -676,25 +710,6 @@
 
   function renderSidePanel() {
     document.getElementById("today-panel").innerHTML = rankedPanelHTML(true);
-  }
-
-  /* Fantastical/Structured-style: the browser tab shows what's on now (or next today), so a glance at the tab is enough. */
-  function liveTitleText() {
-    const now = new Date(), t = now.getTime();
-    const todayStr = S.toDateStr(now);
-    const timed = upcomingWindow().filter(function (it) {
-      return it.date === todayStr && !it.allDay && it.startTime && it.source !== "task";
-    });
-    const cur = timed.filter(function (it) { return startMs(it) <= t && t < endMs(it); })[0];
-    if (cur) return shortTitle(cur) + " · " + durWords(endMs(cur) - t) + " left — llc";
-    const nxt = timed.filter(function (it) { return startMs(it) > t; })[0];
-    if (nxt) return shortTitle(nxt) + " in " + durWords(startMs(nxt) - t) + " — llc";
-    return "llc";
-  }
-
-  function updateLiveTitle() {
-    const txt = liveTitleText();
-    if (document.title !== txt) document.title = txt;
   }
 
   function rankedPanelHTML(compact) {
@@ -2017,6 +2032,9 @@
     document.getElementById("today-btn").addEventListener("click", function () { goToDate(new Date()); });
     bindPicker();
     bindPeek();
+    window.addEventListener("resize", function () {
+      if (ui.page === "calendar" && ui.mode === "month") fitMonthPills();
+    });
     document.getElementById("home-btn").addEventListener("click", function () { ui.page = "home"; render(); });
     document.getElementById("add-btn").addEventListener("click", openAddChooser);
     document.getElementById("menu-btn").addEventListener("click", function () {
@@ -2132,12 +2150,10 @@
       const m = Math.floor(Date.now() / 60000);
       if (m === lastMin) return;
       lastMin = m;
-      updateLiveTitle();
       if (document.hidden || modal.open || peek.open || ui.page !== "calendar") return;
       renderCalendar();
     }, 15000);
     document.addEventListener("visibilitychange", function () {
-      if (!document.hidden) updateLiveTitle();
       if (!document.hidden && ui.page === "calendar" && !modal.open) renderCalendar();
     });
   }
