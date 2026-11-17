@@ -14,6 +14,8 @@ Live site: https://landrcy.github.io/llc/
 - Gym weekly planner: Push / Pull / Legs plus an optional bonus day, weekdays only
 - Homework tracker (due date, class, title, done) — due items show as school-colored bars
 - Gym workout log with per-exercise history
+- Mini month date picker (click the date in the top bar, or press G)
+- Keyboard shortcuts: T today · M / W / D (or 1 / 2 / 3) views · ← / → (or K / J) previous / next · G go to date · C add · Esc close
 - Dark theme, Times New Roman
 
 ## Preloaded schedule

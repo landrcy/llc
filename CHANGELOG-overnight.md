@@ -17,3 +17,17 @@
 - The red now-line and the side panel refresh every minute (and when the tab comes back into focus).
 
 **Tested:** headless Chromium at 1280×800, 1920×1080 and 390×844. No console errors, no horizontal overflow, day view fits 7:30 AM–10:30 PM with no scrolling, and classes expand and collapse correctly in month, week, day and the side panel. No storage-shape change, so saved data is untouched.
+
+## Nov 17, 2026 — pass #2 (2 AM ET)
+
+Re-checked first: the live site loaded (200) with no console errors.
+
+**Looked at:** Google Calendar, Apple Calendar, Fantastical, Notion Calendar (Cron), Amie, Structured and Things. What they share: you can drive them from the keyboard, a mini month lets you jump to any date, and the grid slides in the direction you're moving. All three fit llc's minimal look without adding anything to the screen.
+
+**Added:**
+- **Mini month date picker.** The date in the top bar (e.g. "November 15–21, 2026") is now a button. It opens a small dark month. Today is the gold circle and the week or day you're looking at is shaded. Use ‹ › to change months and tap a date to jump there; the current view (month, week or day) stays the same. Esc, or a click anywhere else, closes it. On phones the top bar shows a short "Nov" in the space the title used to leave empty, so the date picker works on mobile too.
+- **Keyboard shortcuts** (the same keys as Google Calendar and Notion Calendar): T today · M / W / D views (1 / 2 / 3 still work) · ← / → or K / J (and the old P / N) for previous / next · G go to date · C add · Esc close the picker. Shortcuts are ignored while you're typing in a field, while a dialog is open, or when Ctrl, Cmd or Alt is held. Arrow keys now only move the calendar while you're on the calendar page. The buttons show the keys on hover ("Today (T)").
+- **Smooth transitions.** Moving forward slides the new day, week or month in from the right, and moving back slides it in from the left. Switching between Month, Week and Day uses a soft fade and scale. The animations are 0.3–0.4 s, turn off under "reduce motion", and don't run on the once-a-minute now-line refresh or when classes expand or collapse.
+- Small fix: going to the next or previous month from the 31st no longer skips a month (Jan 31 → Feb 28, not Mar 3).
+
+**Tested:** headless Chromium at 1280×800, 1920×1080 and 390×844. No console errors, no horizontal overflow (including mid-slide), nothing in the top bar clipped, and day view fits 7:30 AM–10:30 PM with no scrolling. Every shortcut moves to the right period and direction; the picker opens, changes months, jumps and closes. Classes expand and collapse in month, week, day and the side panel, and the home molecule hub still opens the calendar. No storage changes, so saved data is untouched.

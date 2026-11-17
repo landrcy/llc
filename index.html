@@ -66,23 +66,23 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
         <button class="topbar-title" id="home-btn" type="button" aria-label="Back home">llc</button>
-        <div class="topbar-period" id="period-label"></div>
+        <button class="topbar-period" id="period-label" type="button" aria-haspopup="dialog" aria-expanded="false" title="Go to date (G)"></button>
         <div class="topbar-spacer"></div>
         <div class="view-switch" id="view-switch" hidden>
-          <button type="button" data-mode="month">Month</button>
-          <button type="button" data-mode="week">Week</button>
-          <button type="button" data-mode="day">Day</button>
+          <button type="button" data-mode="month" title="Month (M)">Month</button>
+          <button type="button" data-mode="week" title="Week (W)">Week</button>
+          <button type="button" data-mode="day" title="Day (D)">Day</button>
         </div>
         <div class="date-nav" id="date-nav" hidden>
-          <button class="icon-btn" id="prev-btn" type="button" aria-label="Previous">
+          <button class="icon-btn" id="prev-btn" type="button" aria-label="Previous" title="Previous (←)">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5L8 12l6.5 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <button class="text-btn" id="today-btn" type="button">Today</button>
-          <button class="icon-btn" id="next-btn" type="button" aria-label="Next">
+          <button class="text-btn" id="today-btn" type="button" title="Today (T)">Today</button>
+          <button class="icon-btn" id="next-btn" type="button" aria-label="Next" title="Next (→)">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5L16 12l-6.5 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </div>
-        <button class="primary-btn add-btn" id="add-btn" type="button">Add</button>
+        <button class="primary-btn add-btn" id="add-btn" type="button" title="Add (C)">Add</button>
       </header>
 
       <main class="main">
@@ -117,6 +117,8 @@
       </main>
     </div>
   </div>
+
+  <div class="mini-cal" id="mini-cal" role="dialog" aria-label="Go to date" hidden></div>
 
   <dialog class="modal" id="modal">
     <div class="modal-card">

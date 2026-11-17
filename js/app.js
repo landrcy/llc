@@ -13,7 +13,8 @@
     sidebarOpen: false,
     gymWeek: null,
     openClassDays: new Set(),
-    revealDay: ""
+    revealDay: "",
+    boardAnim: ""
   };
 
   const hubMotion = { running: false, raf: 0, nodes: [], onMove: null, onResize: null, mouse: { x: 0, y: 0, inside: false } };
@@ -146,13 +147,159 @@
     return S.WEEKDAYS_LONG[d.getDay()] + ", " + S.MONTHS[d.getMonth()] + " " + d.getDate() + ", " + d.getFullYear();
   }
 
+  function shortPeriodLabel() {
+    const d = ui.cursor;
+    if (ui.page === "agenda") return "Upcoming";
+    if (ui.page !== "calendar") return "";
+    const m = S.MONTHS[(ui.mode === "week" ? S.startOfWeek(d) : d).getMonth()].slice(0, 3);
+    if (ui.mode === "month") return m;
+    return m + '<span class="pl-day"> ' + (ui.mode === "week" ? S.startOfWeek(d) : d).getDate() + "</span>";
+  }
+
+  /* First day of whatever period is on screen — used to pick the slide direction. */
+  function periodStart(d, mode) {
+    if (mode === "month") return S.startOfMonth(d);
+    if (mode === "week") return S.startOfWeek(d);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+
+  /* Moves the calendar to a date; the board slides in from the side it came from. */
+  function goToDate(date, mode) {
+    const nextMode = mode || ui.mode;
+    const a = periodStart(ui.cursor, ui.mode).getTime();
+    const b = periodStart(date, nextMode).getTime();
+    if (nextMode !== ui.mode) ui.boardAnim = "swap";
+    else if (b > a) ui.boardAnim = "slide-next";
+    else if (b < a) ui.boardAnim = "slide-prev";
+    ui.cursor = new Date(date);
+    ui.mode = nextMode;
+    ui.page = "calendar";
+    render();
+  }
+
   function shiftPeriod(dir) {
     const d = new Date(ui.cursor);
-    if (ui.mode === "month") d.setMonth(d.getMonth() + dir);
+    if (ui.mode === "month") {
+      const day = d.getDate();
+      d.setDate(1);
+      d.setMonth(d.getMonth() + dir);
+      d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+    }
     else if (ui.mode === "week") d.setDate(d.getDate() + 7 * dir);
     else d.setDate(d.getDate() + dir);
-    ui.cursor = d;
+    goToDate(d);
+  }
+
+  function setMode(mode) {
+    if (ui.page === "calendar" && mode === ui.mode) return;
+    if (ui.page === "calendar") ui.boardAnim = "swap";
+    ui.mode = mode;
+    ui.page = "calendar";
     render();
+  }
+
+  /* ---- Mini month picker (click the period label, or press G) ---- */
+  const picker = { open: false, month: null };
+
+  function miniCalHTML() {
+    const first = picker.month;
+    const gridStart = S.startOfWeek(first);
+    const todayStr = S.toDateStr(new Date());
+    let rangeA = "", rangeB = "";
+    if (ui.mode === "week") {
+      rangeA = S.toDateStr(S.startOfWeek(ui.cursor));
+      rangeB = S.toDateStr(S.addDays(S.startOfWeek(ui.cursor), 6));
+    } else if (ui.mode === "day") {
+      rangeA = rangeB = S.toDateStr(ui.cursor);
+    }
+    let html = '<div class="mc-head">' +
+      '<button type="button" class="icon-btn mc-nav" data-mc="prev" aria-label="Previous month"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5L8 12l6.5 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
+      '<span class="mc-title">' + S.MONTHS[first.getMonth()] + " " + first.getFullYear() + "</span>" +
+      '<button type="button" class="icon-btn mc-nav" data-mc="next" aria-label="Next month"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5L16 12l-6.5 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
+      "</div>";
+    html += '<div class="mc-grid" role="grid">';
+    S.WEEKDAYS.forEach(function (w) { html += '<span class="mc-wd">' + w.charAt(0) + "</span>"; });
+    for (let i = 0; i < 42; i++) {
+      const d = S.addDays(gridStart, i);
+      const ds = S.toDateStr(d);
+      let cls = "mc-day";
+      if (d.getMonth() !== first.getMonth()) cls += " is-outside";
+      if (ds === todayStr) cls += " is-today";
+      if (rangeA && ds >= rangeA && ds <= rangeB) {
+        cls += " is-in";
+        if (ds === rangeA) cls += " is-first";
+        if (ds === rangeB) cls += " is-last";
+      }
+      html += '<button type="button" class="' + cls + '" data-mc="day" data-date="' + ds + '" aria-label="' +
+        S.WEEKDAYS_LONG[d.getDay()] + ", " + S.MONTHS[d.getMonth()] + " " + d.getDate() + '"><span>' + d.getDate() + "</span></button>";
+    }
+    html += "</div>";
+    return html;
+  }
+
+  function placePicker() {
+    const el = document.getElementById("mini-cal");
+    const label = document.getElementById("period-label");
+    const r = label.getBoundingClientRect();
+    const w = el.offsetWidth || 248;
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+    el.style.left = left + "px";
+    el.style.top = Math.round(r.bottom + 8) + "px";
+  }
+
+  function paintPicker() {
+    const el = document.getElementById("mini-cal");
+    el.innerHTML = miniCalHTML();
+  }
+
+  function openPicker() {
+    if (ui.page !== "calendar") return;
+    const el = document.getElementById("mini-cal");
+    picker.open = true;
+    picker.month = S.startOfMonth(ui.cursor);
+    paintPicker();
+    el.hidden = false;
+    placePicker();
+    el.classList.remove("is-in");
+    void el.offsetWidth;
+    el.classList.add("is-in");
+    document.getElementById("period-label").setAttribute("aria-expanded", "true");
+  }
+
+  function closePicker() {
+    if (!picker.open) return;
+    picker.open = false;
+    document.getElementById("mini-cal").hidden = true;
+    document.getElementById("period-label").setAttribute("aria-expanded", "false");
+  }
+
+  function bindPicker() {
+    const el = document.getElementById("mini-cal");
+    document.getElementById("period-label").addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (picker.open) closePicker(); else openPicker();
+    });
+    el.addEventListener("click", function (e) {
+      e.stopPropagation();
+      const b = e.target.closest("[data-mc]");
+      if (!b) return;
+      const kind = b.getAttribute("data-mc");
+      if (kind === "prev" || kind === "next") {
+        const m = new Date(picker.month);
+        m.setMonth(m.getMonth() + (kind === "next" ? 1 : -1));
+        picker.month = m;
+        paintPicker();
+        return;
+      }
+      if (kind === "day") {
+        closePicker();
+        goToDate(S.parseDateStr(b.getAttribute("data-date")));
+      }
+    });
+    document.addEventListener("click", function (e) {
+      if (picker.open && !el.contains(e.target)) closePicker();
+    });
+    window.addEventListener("resize", function () { if (picker.open) placePicker(); });
   }
 
 
@@ -171,7 +318,11 @@
         b.classList.toggle("is-active", b.getAttribute("data-mode") === ui.mode);
       });
     }
-    document.getElementById("period-label").textContent = periodLabel();
+    const label = document.getElementById("period-label");
+    label.innerHTML = '<span class="pl-long">' + esc(periodLabel()) + '</span><span class="pl-short">' + shortPeriodLabel() + "</span>";
+    label.disabled = ui.page !== "calendar";
+    if (ui.page !== "calendar") closePicker();
+    else if (picker.open) paintPicker();
     document.querySelectorAll(".view").forEach(function (v) { v.hidden = true; });
     const view = document.getElementById("view-" + ui.page);
     if (view) view.hidden = false;
@@ -206,6 +357,13 @@
     if (ui.mode === "month") board.innerHTML = monthHTML();
     else if (ui.mode === "week") board.innerHTML = timeCalHTML("week");
     else board.innerHTML = timeCalHTML("day");
+    const anim = ui.boardAnim;
+    ui.boardAnim = "";
+    board.classList.remove("slide-next", "slide-prev", "swap");
+    if (anim) {
+      void board.offsetWidth;
+      board.classList.add(anim);
+    }
     renderSidePanel();
   }
 
@@ -1279,6 +1437,7 @@
     if (act === "open-day") {
       e.preventDefault();
       ui.cursor = S.parseDateStr(t.getAttribute("data-date"));
+      if (ui.page === "calendar" && ui.mode !== "day") ui.boardAnim = "swap";
       ui.mode = "day";
       ui.page = "calendar";
       render();
@@ -1646,12 +1805,12 @@
     document.getElementById("view-switch").addEventListener("click", function (e) {
       const b = e.target.closest("[data-mode]");
       if (!b) return;
-      ui.mode = b.getAttribute("data-mode");
-      render();
+      setMode(b.getAttribute("data-mode"));
     });
     document.getElementById("prev-btn").addEventListener("click", function () { shiftPeriod(-1); });
     document.getElementById("next-btn").addEventListener("click", function () { shiftPeriod(1); });
-    document.getElementById("today-btn").addEventListener("click", function () { ui.cursor = new Date(); render(); });
+    document.getElementById("today-btn").addEventListener("click", function () { goToDate(new Date()); });
+    bindPicker();
     document.getElementById("home-btn").addEventListener("click", function () { ui.page = "home"; render(); });
     document.getElementById("add-btn").addEventListener("click", openAddChooser);
     document.getElementById("menu-btn").addEventListener("click", function () {
@@ -1690,15 +1849,25 @@
     });
     document.getElementById("onboard-skip").addEventListener("click", finishOnboard);
 
+    /* Keyboard shortcuts (Google Calendar / Notion Calendar style). */
     document.addEventListener("keydown", function (e) {
-      if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.target && (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable)) return;
       if (modal.open) return;
-      if (e.key === "t") { ui.cursor = new Date(); ui.page = "calendar"; render(); }
-      if (e.key === "ArrowLeft" || e.key === "p") shiftPeriod(-1);
-      if (e.key === "ArrowRight" || e.key === "n") shiftPeriod(1);
-      if (e.key === "1") { ui.page = "calendar"; ui.mode = "month"; render(); }
-      if (e.key === "2") { ui.page = "calendar"; ui.mode = "week"; render(); }
-      if (e.key === "3") { ui.page = "calendar"; ui.mode = "day"; render(); }
+      if (picker.open && e.key === "Escape") { closePicker(); return; }
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      const onCal = ui.page === "calendar";
+      let hit = true;
+      if (k === "t") goToDate(new Date());
+      else if (k === "m" || k === "1") setMode("month");
+      else if (k === "w" || k === "2") setMode("week");
+      else if (k === "d" || k === "3") setMode("day");
+      else if (onCal && (k === "ArrowLeft" || k === "k" || k === "p")) shiftPeriod(-1);
+      else if (onCal && (k === "ArrowRight" || k === "j" || k === "n")) shiftPeriod(1);
+      else if (onCal && k === "g") { if (picker.open) closePicker(); else openPicker(); }
+      else if (k === "c" && ui.page !== "home") openAddChooser();
+      else hit = false;
+      if (hit) e.preventDefault();
     });
   }
 
