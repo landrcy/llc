@@ -14,15 +14,15 @@ Live site: https://landrcy.github.io/llc/
 - Gym workout log with per-exercise history
 - Import/export JSON backups and `.ics` calendars
 - Optional silent browser reminders while the tab is open
-- Dark theme by default, light theme toggle, Times New Roman
+- Dark theme, Times New Roman
 
 ## Preloaded schedule
 
-Spring 2027 Session I at Broward College is already on the calendar (times are approximate and editable):
+Broward College classes are already on the calendar (times are approximate and editable). Opening the site shows a home hub: calendar, school, gym, events, and personal.
 
-- Term: **January 6, 2027 – May 4, 2027**
-- Skipped for day classes: MLK Day (**Jan 18**), Professional Development Day (**Feb 19**, no day classes; evening classes from 5 p.m. still meet), Spring Break (**Mar 1–7**)
-- The college PDF lists the last regular class day as Apr 27 and finals week as Apr 28–May 4. The term end (and catalog “classes end”) is May 4, which is what this site uses so finals week stays on the calendar.
+**Fall 2026:** August 21, 2026 – December 15, 2026. Day classes skip Thanksgiving (**Nov 25–29**). Also marked: Thanksgiving break (all day, Nov 25–29) and Fall finals week (Dec 9–15).
+
+**Spring 2027 Session I:** January 6, 2027 – May 4, 2027. Skipped for day classes: MLK Day (**Jan 18**), Professional Development Day (**Feb 19**, no day classes; evening classes from 5 p.m. still meet), Spring Break (**Mar 1–7**). The college PDF lists the last regular class day as Apr 27 and finals week as Apr 28–May 4; this site uses May 4 so finals week stays on the calendar.
 
 ## Running locally
 

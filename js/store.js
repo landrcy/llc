@@ -62,6 +62,19 @@
     return h12 + ":" + pad(m || 0) + " " + ap;
   }
 
+  function formatTimeCompact(hhmm) {
+    if (!hhmm) return "";
+    const [h, m] = hhmm.split(":").map(Number);
+    const h12 = (h % 12) || 12;
+    return h12 + ":" + pad(m || 0);
+  }
+
+  function formatTimeRangeCompact(start, end) {
+    if (!start) return "All day";
+    if (!end) return formatTimeCompact(start);
+    return formatTimeCompact(start) + "–" + formatTimeCompact(end);
+  }
+
   function formatDateNice(sOrDate) {
     const d = typeof sOrDate === "string" ? parseDateStr(sOrDate) : sOrDate;
     return WEEKDAYS[d.getDay()] + ", " + MONTHS[d.getMonth()] + " " + d.getDate();
@@ -83,24 +96,31 @@
     }
   }
 
+  const SEED_VERSION = 2;
+
+  function builtinCategories() {
+    return [
+      { id: "cat-classes", name: "School", color: "#4C7CF0", builtin: true, kind: "class" },
+      { id: "cat-gym", name: "Gym", color: "#E25A3C", builtin: true, kind: "gym" },
+      { id: "cat-events", name: "Events", color: "#3DAA6D", builtin: true, kind: "event" },
+      { id: "cat-personal", name: "Personal", color: "#8B6BC4", builtin: true, kind: "personal" }
+    ];
+  }
+
   function defaultState() {
     return {
       version: 1,
+      seedVersion: SEED_VERSION,
       onboarded: false,
       theme: "dark",
       settings: {
         remindersEnabled: false,
         defaultReminderMinutes: 15
       },
-      categories: [
-        { id: "cat-classes", name: "Classes", color: "#4C6EF5", builtin: true, kind: "class" },
-        { id: "cat-gym", name: "Gym", color: "#0CA678", builtin: true, kind: "gym" },
-        { id: "cat-events", name: "Events", color: "#E64980", builtin: true, kind: "event" },
-        { id: "cat-personal", name: "Personal", color: "#C9A227", builtin: true, kind: "personal" }
-      ],
-      classes: spring2027Classes(),
+      categories: builtinCategories(),
+      classes: fall2026Classes().concat(spring2027Classes()),
       gymPlan: null,
-      events: spring2027Holidays(),
+      events: fall2026Events().concat(spring2027Holidays()),
       tasks: [],
       workouts: []
     };
@@ -112,6 +132,32 @@
     daySkips: ["2027-01-18", "2027-02-19", "2027-03-01", "2027-03-02", "2027-03-03", "2027-03-04", "2027-03-05", "2027-03-06", "2027-03-07"],
     eveningSkips: ["2027-01-18", "2027-03-01", "2027-03-02", "2027-03-03", "2027-03-04", "2027-03-05", "2027-03-06", "2027-03-07"]
   };
+
+  const FALL_2026 = {
+    start: "2026-08-21",
+    end: "2026-12-15",
+    skips: ["2026-11-25", "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29"]
+  };
+
+  function fall2026Classes() {
+    const loc = "Broward College";
+    const base = { categoryId: "cat-classes", startDate: FALL_2026.start, endDate: FALL_2026.end, location: loc, notes: "", reminderMinutes: 15, skipDates: FALL_2026.skips.slice() };
+    return [
+      Object.assign({ id: "cls-comp-lit", name: "Computer Literacy", shortName: "Comp Lit", days: [1, 3], startTime: "09:30", endTime: "10:45" }, base),
+      Object.assign({ id: "cls-music", name: "Music Appreciation", shortName: "Music", days: [1, 3], startTime: "11:00", endTime: "12:15" }, base),
+      Object.assign({ id: "cls-sls", name: "SLS College Success Skills", shortName: "SLS", days: [1], startTime: "13:00", endTime: "13:50" }, base),
+      Object.assign({ id: "cls-amh2010", name: "AMH2010 American History", shortName: "AMH2010", days: [2], startTime: "11:00", endTime: "12:15" }, base),
+      Object.assign({ id: "cls-algebra", name: "College Algebra", shortName: "Algebra", days: [1, 2, 3, 4, 5], startTime: "14:00", endTime: "14:50" }, base),
+      Object.assign({ id: "cls-enc1101", name: "ENC1101", shortName: "ENC1101", days: [1, 2, 3, 4, 5], startTime: "15:00", endTime: "15:50" }, base)
+    ];
+  }
+
+  function fall2026Events() {
+    return [
+      { id: "ev-thanksgiving-2026", title: "Thanksgiving break - no classes", categoryId: "cat-events", date: "2026-11-25", allDay: true, startTime: "", endTime: "", location: "Broward College", notes: "No classes, November 25–29.", recurrence: { freq: "daily", until: "2026-11-29", skipDates: [] }, skipDates: [], reminderMinutes: null },
+      { id: "ev-fall-finals-2026", title: "Fall finals week", categoryId: "cat-events", date: "2026-12-09", allDay: true, startTime: "", endTime: "", location: "Broward College", notes: "Final examination week, December 9–15.", recurrence: { freq: "daily", until: "2026-12-15", skipDates: [] }, skipDates: [], reminderMinutes: null }
+    ];
+  }
 
   function spring2027Classes() {
     const loc = "Broward College";
@@ -134,22 +180,57 @@
     ];
   }
 
+  function hasSameClass(list, cls) {
+    return list.some((c) => c.id === cls.id || (c.name === cls.name && c.startTime === cls.startTime && c.startDate === cls.startDate));
+  }
+
+  function hasSameEvent(list, ev) {
+    return list.some((e) => e.id === ev.id || (e.title === ev.title && e.date === ev.date));
+  }
+
+  function applySeedMigration(s) {
+    const incoming = Number(s.seedVersion) || 0;
+    if (incoming < 2) {
+      fall2026Classes().forEach((cls) => {
+        if (!hasSameClass(s.classes, cls)) s.classes.push(cls);
+      });
+      fall2026Events().forEach((ev) => {
+        if (!hasSameEvent(s.events, ev)) s.events.push(ev);
+      });
+    }
+    const fresh = builtinCategories();
+    fresh.forEach((want) => {
+      const have = s.categories.find((c) => c.id === want.id);
+      if (!have) {
+        s.categories.unshift(want);
+        return;
+      }
+      if (have.id === "cat-classes" && have.name === "Classes") have.name = "School";
+      if (have.builtin) have.color = want.color;
+      if (have.id === "cat-classes") have.name = have.name === "Classes" ? "School" : (have.name || "School");
+    });
+    const school = s.categories.find((c) => c.id === "cat-classes");
+    if (school && school.name === "Classes") school.name = "School";
+    s.theme = "dark";
+    s.seedVersion = SEED_VERSION;
+    s._seedMigrated = incoming < SEED_VERSION;
+    return s;
+  }
+
   function normalize(raw) {
     const base = defaultState();
     if (!raw || typeof raw !== "object") return base;
-    const s = Object.assign(base, raw);
-    s.settings = Object.assign(defaultState().settings, raw.settings || {});
-    if (!Array.isArray(s.categories) || !s.categories.length) s.categories = defaultState().categories;
-    const needed = defaultState().categories;
-    needed.forEach((c) => {
-      if (!s.categories.some((x) => x.id === c.id)) s.categories.unshift(c);
-    });
-    s.classes = Array.isArray(s.classes) ? s.classes : [];
-    s.events = Array.isArray(s.events) ? s.events : [];
-    s.tasks = Array.isArray(s.tasks) ? s.tasks : [];
-    s.workouts = Array.isArray(s.workouts) ? s.workouts : [];
-    if (s.theme !== "light") s.theme = "dark";
-    return s;
+    const incomingVersion = raw.seedVersion != null ? Number(raw.seedVersion) : 0;
+    const s = Object.assign({}, base, raw);
+    s.settings = Object.assign({}, base.settings, raw.settings || {});
+    s.categories = Array.isArray(raw.categories) && raw.categories.length ? raw.categories.slice() : builtinCategories();
+    s.classes = Array.isArray(raw.classes) ? raw.classes.slice() : [];
+    s.events = Array.isArray(raw.events) ? raw.events.slice() : [];
+    s.tasks = Array.isArray(raw.tasks) ? raw.tasks.slice() : [];
+    s.workouts = Array.isArray(raw.workouts) ? raw.workouts.slice() : [];
+    s.seedVersion = incomingVersion;
+    s.theme = "dark";
+    return applySeedMigration(s);
   }
 
   let data = defaultState();
@@ -161,6 +242,10 @@
     } catch (err) {
       console.warn("llc: could not load saved data", err);
       data = defaultState();
+    }
+    if (data._seedMigrated) {
+      delete data._seedMigrated;
+      save();
     }
     return data;
   }
@@ -403,10 +488,10 @@
   global.LLCStore = {
     KEY, WEEKDAYS, WEEKDAYS_LONG, MONTHS,
     pad, uid, toDateStr, parseDateStr, startOfDay, addDays, startOfWeek, endOfWeek,
-    startOfMonth, daysInMonth, minutesSinceMidnight, formatTime, formatDateNice,
+    startOfMonth, daysInMonth, minutesSinceMidnight, formatTime, formatTimeCompact, formatTimeRangeCompact, formatDateNice,
     combine, eachDate, defaultState,
     load, save, get, replace, update, categoryById,
     getOccurrencesInRange, exportJSON, importJSON, clearAll,
-    workoutForDate, exerciseHistory, SPRING_2027
+    workoutForDate, exerciseHistory, SPRING_2027, FALL_2026, SEED_VERSION
   };
 })(window);

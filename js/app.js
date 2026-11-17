@@ -6,7 +6,7 @@
   const CAT_PRI = { "cat-classes": 0, "cat-gym": 1, "cat-events": 2, "cat-personal": 3 };
 
   const ui = {
-    page: "calendar",
+    page: "home",
     mode: "month",
     cursor: new Date(),
     hiddenCats: new Set(),
@@ -62,11 +62,15 @@
     return S.formatTime(occ.startTime) + (occ.endTime ? " – " + S.formatTime(occ.endTime) : "");
   }
 
+  function timeLabelCompact(occ) {
+    if (occ.allDay || !occ.startTime) return "All day";
+    return S.formatTimeRangeCompact(occ.startTime, occ.endTime);
+  }
+
   function applyTheme() {
-    const t = S.get().theme === "light" ? "light" : "dark";
-    document.documentElement.setAttribute("data-theme", t);
+    document.documentElement.setAttribute("data-theme", "dark");
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", t === "dark" ? "#11110F" : "#F4F1EB");
+    if (meta) meta.setAttribute("content", "#11110F");
   }
 
   function toast(msg) {
@@ -145,10 +149,13 @@
     const view = document.getElementById("view-" + ui.page);
     if (view) view.hidden = false;
     renderCatFilters();
+    document.getElementById("app").classList.toggle("is-home", ui.page === "home");
     if (ui.page === "calendar") renderCalendar();
     else if (ui.page === "agenda") renderAgendaPage();
     else if (ui.page === "classes") renderClassesPage();
     else if (ui.page === "gym") renderGymPage();
+    else if (ui.page === "events") renderCategoryPage("events", "cat-events");
+    else if (ui.page === "personal") renderCategoryPage("personal", "cat-personal");
     else if (ui.page === "tasks") renderTasksPage();
     else if (ui.page === "settings") renderSettingsPage();
     closeSidebar();
@@ -250,16 +257,21 @@
     });
     html += "</div>";
 
-    html += '<div class="allday-row"><div class="gutter"></div>';
-    dayDates.forEach(function (d) {
-      const items = S.getOccurrencesInRange(d, d, { hiddenCats: ui.hiddenCats }).filter(function (it) { return it.allDay || !it.startTime; });
-      html += '<div class="allday-cell">';
-      items.forEach(function (it) {
-        html += '<button type="button" class="evt-pill" data-act="open-occ" data-id="' + esc(it.id) + '" style="--c:' + esc(catColor(it.categoryId)) + '">' + esc(shortTitle(it)) + "</button>";
+    const allDayByDay = dayDates.map(function (d) {
+      return S.getOccurrencesInRange(d, d, { hiddenCats: ui.hiddenCats }).filter(function (it) { return it.allDay || !it.startTime; });
+    });
+    const hasAllDay = allDayByDay.some(function (items) { return items.length; });
+    if (hasAllDay) {
+      html += '<div class="allday-row"><div class="gutter"></div>';
+      allDayByDay.forEach(function (items) {
+        html += '<div class="allday-cell">';
+        items.forEach(function (it) {
+          html += '<button type="button" class="evt-pill" data-act="open-occ" data-id="' + esc(it.id) + '" style="--c:' + esc(catColor(it.categoryId)) + '">' + esc(shortTitle(it)) + "</button>";
+        });
+        html += "</div>";
       });
       html += "</div>";
-    });
-    html += "</div>";
+    }
 
     html += '<div class="timed-scroll"><div class="timed-body">';
     html += '<div class="hours">';
@@ -297,8 +309,8 @@
         }
         var sty = '--c:' + catColor(it.categoryId) + ';top:' + top + 'px;height:' + Math.max(height, 22) + 'px;left:calc(' + left + '% + 2px);width:calc(' + width + '% - 5px);right:auto;';
         html += '<button type="button" class="evt-block' + (detailed ? ' is-detailed' : '') + '" data-act="open-occ" data-id="' + esc(it.id) + '" style="' + sty + '">' +
-          (detailed ? esc(it.title) : esc(shortTitle(it))) +
-          '<span class="t">' + esc(timeLabel(it)) + "</span>" +
+          '<span class="ttl">' + (detailed ? esc(it.title) : esc(shortTitle(it))) + "</span>" +
+          '<span class="t">' + esc(timeLabelCompact(it)) + "</span>" +
           (descBits.length ? '<span class="desc">' + esc(descBits.join(" · ")) + "</span>" : "") +
           "</button>";
       });
@@ -387,7 +399,7 @@
 
   function renderClassesPage() {
     const classes = S.get().classes;
-    let html = '<div class="page-head"><div><h2>Classes</h2><p>Spring 2027 at Broward College is preloaded. Times are approximate — edit anything that looks off.</p></div>' +
+    let html = '<div class="page-head"><div><h2>School</h2><p>Fall 2026 and Spring 2027 at Broward College are preloaded. Times are approximate — edit anything that looks off.</p></div>' +
       '<button class="primary-btn" type="button" data-act="add-class">Add class</button></div>';
     if (!classes.length) {
       html += '<div class="card"><p class="empty-note">No classes yet. Add a semester schedule and it will fill the calendar.</p></div>';
@@ -497,6 +509,30 @@
     document.getElementById("view-tasks").innerHTML = html;
   }
 
+  function renderCategoryPage(viewId, categoryId) {
+    const cat = S.categoryById(categoryId);
+    const title = cat && cat.name ? cat.name : viewId;
+    const now = new Date();
+    const items = S.getOccurrencesInRange(S.addDays(now, -14), S.addDays(now, 120), { hiddenCats: new Set() })
+      .filter(function (it) { return it.categoryId === categoryId; });
+    let html = '<div class="page-head"><div><h2>' + esc(title) + '</h2><p>Items in this category, soonest first.</p></div>' +
+      '<button class="primary-btn" type="button" data-act="add-event" data-cat="' + esc(categoryId) + '">Add</button></div>';
+    if (!items.length) html += '<div class="card"><p class="empty-note">Nothing in ' + esc(title) + " yet.</p></div>";
+    else {
+      let last = "";
+      html += '<div class="card">';
+      items.forEach(function (it) {
+        if (it.date !== last) {
+          html += '<div class="agenda-date">' + esc(S.formatDateNice(it.date)) + "</div>";
+          last = it.date;
+        }
+        html += occRow(it);
+      });
+      html += "</div>";
+    }
+    document.getElementById("view-" + viewId).innerHTML = html;
+  }
+
   function toHex(color) {
     if (!color) return "#888888";
     if (color.charAt(0) === "#" && color.length === 7) return color;
@@ -507,8 +543,6 @@
     const st = S.get();
     let html = '<div class="page-head"><div><h2>Settings</h2><p>This site runs in your browser. Export a backup if you switch devices.</p></div></div>';
     html += '<div class="settings-stack">';
-    html += '<div class="card"><div class="setting-row"><div><h3>Theme</h3><p class="muted">Dark is the default. Times New Roman throughout.</p></div>' +
-      '<button class="secondary-btn" type="button" data-act="toggle-theme">' + (st.theme === "light" ? "Switch to dark" : "Switch to light") + "</button></div></div>";
     html += '<div class="card"><div class="setting-row"><div><h3>Reminders</h3><p class="muted">Optional browser notifications a few minutes before an item, only while this tab is open. Silent — no sound.</p></div>' +
       '<button class="secondary-btn" type="button" data-act="toggle-reminders">' + (st.settings.remindersEnabled ? "On — turn off" : "Off — turn on") + "</button></div>" +
       '<label class="field" style="margin-top:12px;max-width:200px">Minutes before' +
@@ -527,7 +561,7 @@
       '<button class="secondary-btn" type="button" data-act="export-ics">Export .ics</button>' +
       '<button class="ghost-btn" type="button" data-act="import-ics">Import .ics</button>' +
       "</div></div>";
-    html += '<div class="card"><h3>Reset</h3><p class="muted">Clears gym logs and your edits, then restores the preloaded Spring 2027 schedule.</p>' +
+    html += '<div class="card"><h3>Reset</h3><p class="muted">Clears gym logs and your edits, then restores the preloaded Fall 2026 and Spring 2027 schedules.</p>' +
       '<button class="danger-btn" type="button" data-act="reset-data" style="margin-top:10px">Reset data</button></div>';
     html += "</div>";
     document.getElementById("view-settings").innerHTML = html;
@@ -666,7 +700,7 @@
 
   function openEventForm(existing, preset) {
     const ev = existing || {
-      title: "", categoryId: "cat-events", date: (preset && preset.date) || S.toDateStr(ui.cursor),
+      title: "", categoryId: (preset && preset.categoryId) || "cat-events", date: (preset && preset.date) || S.toDateStr(ui.cursor),
       startTime: (preset && preset.time) || "12:00", endTime: (preset && preset.end) || "13:00",
       allDay: false, location: "", notes: "", reminderMinutes: S.get().settings.defaultReminderMinutes,
       recurrence: null, skipDates: []
@@ -1073,6 +1107,25 @@
       return;
     }
     const act = t.getAttribute("data-act");
+    if (act === "go" || act === "go-home") {
+      const page = act === "go-home" ? "home" : (t.getAttribute("data-page") || "home");
+      if (t.classList.contains("hub-node") && (t.classList.contains("is-press") || isCoarsePointer())) {
+        if (t.getAttribute("data-animating") === "1") return;
+        t.setAttribute("data-animating", "1");
+        t.classList.add("is-press");
+        const wait = Math.max(80, 230 - (Date.now() - (hubPressAt || 0)));
+        setTimeout(function () {
+          t.classList.remove("is-press");
+          t.removeAttribute("data-animating");
+          ui.page = page;
+          render();
+        }, wait);
+        return;
+      }
+      ui.page = page;
+      render();
+      return;
+    }
     if (act === "open-occ") {
       e.preventDefault();
       e.stopPropagation();
@@ -1137,7 +1190,7 @@
       render();
       return;
     }
-    if (act === "add-event") { openEventForm(null, null); return; }
+    if (act === "add-event") { openEventForm(null, { categoryId: t.getAttribute("data-cat") || undefined }); return; }
     if (act === "edit-event") {
       const ev = S.get().events.find(function (c) { return c.id === t.getAttribute("data-id"); });
       if (ev) openEventForm(ev);
@@ -1220,13 +1273,7 @@
       skipOcc(t.getAttribute("data-kind"), t.getAttribute("data-id"), t.getAttribute("data-date"));
       return;
     }
-    if (act === "toggle-theme") {
-      S.update(function (d) { d.theme = d.theme === "light" ? "dark" : "light"; });
-      applyTheme();
-      render();
-      return;
-    }
-    if (act === "toggle-reminders") {
+if (act === "toggle-reminders") {
       if (S.get().settings.remindersEnabled) {
         S.update(function (d) { d.settings.remindersEnabled = false; });
         render();
@@ -1264,11 +1311,11 @@
     }
     if (act === "import-ics") { document.getElementById("file-ics").click(); return; }
     if (act === "reset-data") {
-      if (!window.confirm("Reset llc to the preloaded Spring 2027 schedule? This clears gym logs, tasks, and edits on this device.")) return;
+      if (!window.confirm("Reset llc to the preloaded Fall 2026 and Spring 2027 schedules? This clears gym logs, tasks, and edits on this device.")) return;
       S.clearAll();
       ui.cursor = initialCursor();
       render();
-      toast("Restored the Spring 2027 schedule.");
+      toast("Restored the preloaded schedules.");
       return;
     }
   }
@@ -1285,8 +1332,30 @@
     if (dlg.open) dlg.close();
   }
 
+  let hubPressAt = 0;
+
+  function isCoarsePointer() {
+    return window.matchMedia && window.matchMedia("(hover: none), (pointer: coarse)").matches;
+  }
+
+  function bindHubPress() {
+    document.addEventListener("pointerdown", function (e) {
+      const node = e.target.closest && e.target.closest(".hub-node");
+      if (!node) return;
+      if (e.pointerType === "touch" || e.pointerType === "pen") {
+        node.classList.add("is-press");
+        hubPressAt = Date.now();
+      }
+    });
+    document.addEventListener("pointercancel", function (e) {
+      const node = e.target.closest && e.target.closest(".hub-node");
+      if (node) node.classList.remove("is-press");
+    });
+  }
+
   function bind() {
     document.addEventListener("click", onClick);
+    bindHubPress();
     document.querySelectorAll(".nav-btn").forEach(function (b) {
       b.addEventListener("click", function () { ui.page = b.getAttribute("data-page"); render(); });
     });
@@ -1299,11 +1368,7 @@
     document.getElementById("prev-btn").addEventListener("click", function () { shiftPeriod(-1); });
     document.getElementById("next-btn").addEventListener("click", function () { shiftPeriod(1); });
     document.getElementById("today-btn").addEventListener("click", function () { ui.cursor = new Date(); render(); });
-    document.getElementById("theme-btn").addEventListener("click", function () {
-      S.update(function (d) { d.theme = d.theme === "light" ? "dark" : "light"; });
-      applyTheme();
-      render();
-    });
+    document.getElementById("home-btn").addEventListener("click", function () { ui.page = "home"; render(); });
     document.getElementById("add-btn").addEventListener("click", openAddChooser);
     document.getElementById("menu-btn").addEventListener("click", function () {
       ui.sidebarOpen = !ui.sidebarOpen;

@@ -14,10 +14,14 @@
     <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
     <aside class="sidebar" id="sidebar">
       <div class="brand">
-        <span class="brand-mark">llc</span>
+        <button type="button" class="brand-mark" data-act="go-home" aria-label="Back home">llc</button>
       </div>
       <nav class="nav" aria-label="Main">
-        <button class="nav-btn is-active" data-page="calendar" type="button">
+        <button class="nav-btn" data-page="home" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="currentColor"/><circle cx="12" cy="4.2" r="2.1" fill="currentColor"/><circle cx="12" cy="19.8" r="2.1" fill="currentColor"/><circle cx="4.2" cy="12" r="2.1" fill="currentColor"/><circle cx="19.8" cy="12" r="2.1" fill="currentColor"/><path d="M12 6.3v2.2M12 15.5v2.2M6.3 12h2.2M15.5 12h2.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+          Home
+        </button>
+        <button class="nav-btn" data-page="calendar" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3 9h18M8 3v4M16 3v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
           Calendar
         </button>
@@ -27,11 +31,19 @@
         </button>
         <button class="nav-btn" data-page="classes" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V6a1 1 0 0 1 1-1h6v14H5a1 1 0 0 1-1-1zm10-9h6l-1.5 9H14V10z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8 8v.01M8 11v.01" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-          Classes
+          School
         </button>
         <button class="nav-btn" data-page="gym" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8v8M17 8v8M4 10v4M20 10v4M7 12h10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
           Gym
+        </button>
+        <button class="nav-btn" data-page="events" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h8l1 4H7l1-4zM7 9v10h10V9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M10 13h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          Events
+        </button>
+        <button class="nav-btn" data-page="personal" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M5.5 19c1.2-3.2 3.4-5 6.5-5s5.3 1.8 6.5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          Personal
         </button>
         <button class="nav-btn" data-page="tasks" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8 12l2.5 2.5L16 9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -53,7 +65,7 @@
         <button class="icon-btn menu-btn" id="menu-btn" type="button" aria-label="Open menu">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
-        <h1 class="topbar-title">llc</h1>
+        <button class="topbar-title" id="home-btn" type="button" aria-label="Back home">llc</button>
         <div class="topbar-period" id="period-label"></div>
         <div class="topbar-spacer"></div>
         <div class="view-switch" id="view-switch" hidden>
@@ -70,15 +82,24 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5L16 12l-6.5 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </div>
-        <button class="icon-btn" id="theme-btn" type="button" aria-label="Toggle theme">
-          <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 3v2M12 19v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M3 12h2M19 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-          <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 12.5A6.5 6.5 0 1 1 11.5 6 5 5 0 0 0 17 12.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
-        </button>
         <button class="primary-btn add-btn" id="add-btn" type="button">Add</button>
       </header>
 
       <main class="main">
-        <section class="view" id="view-calendar">
+        <section class="view view-home" id="view-home">
+          <div class="hub" aria-label="Home">
+            <div class="hub-line hub-line-school" aria-hidden="true"></div>
+            <div class="hub-line hub-line-gym" aria-hidden="true"></div>
+            <div class="hub-line hub-line-events" aria-hidden="true"></div>
+            <div class="hub-line hub-line-personal" aria-hidden="true"></div>
+            <button type="button" class="hub-node hub-school" data-act="go" data-page="classes">school</button>
+            <button type="button" class="hub-node hub-events" data-act="go" data-page="events">events</button>
+            <button type="button" class="hub-node hub-calendar" data-act="go" data-page="calendar">calendar</button>
+            <button type="button" class="hub-node hub-personal" data-act="go" data-page="personal">personal</button>
+            <button type="button" class="hub-node hub-gym" data-act="go" data-page="gym">gym</button>
+          </div>
+        </section>
+        <section class="view" id="view-calendar" hidden>
           <div class="calendar-layout">
             <div class="calendar-board" id="calendar-board"></div>
             <aside class="today-panel" id="today-panel" aria-label="Today and upcoming"></aside>
@@ -87,6 +108,8 @@
         <section class="view" id="view-agenda" hidden></section>
         <section class="view" id="view-classes" hidden></section>
         <section class="view" id="view-gym" hidden></section>
+        <section class="view" id="view-events" hidden></section>
+        <section class="view" id="view-personal" hidden></section>
         <section class="view" id="view-tasks" hidden></section>
         <section class="view" id="view-settings" hidden></section>
       </main>
@@ -110,7 +133,7 @@
     <div class="modal-card onboarding-card">
       <p class="eyebrow">Welcome</p>
       <h2>llc</h2>
-      <p class="lead">Your Spring 2027 Broward College schedule is already on the calendar (times are approximate and easy to edit). Track gym, events, and tasks here too. Everything stays on this device unless you export a backup.</p>
+      <p class="lead">Your Fall 2026 and Spring 2027 Broward College schedules are already on the calendar (times are approximate and easy to edit). Track gym, events, and tasks here too. Everything stays on this device unless you export a backup.</p>
       <div class="onboard-actions">
         <button class="primary-btn" id="onboard-classes" type="button">Review class schedule</button>
         <button class="secondary-btn" id="onboard-gym" type="button">Set up gym split</button>
