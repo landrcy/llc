@@ -391,6 +391,59 @@
     return Math.max(4, Math.ceil(days / 7));
   }
 
+
+  function visibleOccs(d, opts) {
+    let items = S.getOccurrencesInRange(d, d, opts || {});
+    if (hideSpringLists()) items = items.filter(function (it) { return !isSpringClassOcc(it); });
+    return items;
+  }
+
+  /* Weekday with no School/class occurrences (skips, breaks, and days outside the term). Weekends stay unmarked. */
+  function isWeekendDate(d) {
+    const x = (d instanceof Date) ? d : S.parseDateStr(d);
+    const dow = x.getDay();
+    return dow === 0 || dow === 6;
+  }
+
+  function isBreakOcc(it) {
+    if (!it || it.source === "class" || it.source === "classgroup" || it.source === "task") return false;
+    if (!(it.allDay || !it.startTime)) return false;
+    const t = (it.title || "") + " " + (it.notes || "");
+    return /\bno classes\b|\bno class\b|\bno day classes\b|\bbreak\b|\bcollege closed\b|\bholiday\b/i.test(t);
+  }
+
+  function schoolOccsOn(d) {
+    /* Ignore the category filter so hiding School does not mark every weekday as off. */
+    return visibleOccs(d, {}).filter(isClassOcc);
+  }
+
+  function isNoSchoolDay(d) {
+    if (isWeekendDate(d)) return false;
+    return schoolOccsOn(d).length === 0;
+  }
+
+  function breakOccOn(d) {
+    return visibleOccs(d, {}).filter(isBreakOcc)[0] || null;
+  }
+
+  function noSchoolTitle(d) {
+    const ev = breakOccOn(d);
+    if (!ev) return "No school";
+    let t = String(ev.title || "");
+    t = t.replace(/\s*[-–—:]\s*no classes.*$/i, "");
+    t = t.replace(/\s*\((?:college closed|no (?:day|evening|day or evening) classes?[^)]*)\)\s*/gi, "");
+    t = t.replace(/\s*\bno classes\b.*$/i, "");
+    t = t.replace(/\s*\bcollege closed\b/gi, "");
+    t = t.replace(/\s+break\s*$/i, /spring/i.test(ev.title) ? " Break" : "");
+    t = t.replace(/\s+/g, " ").trim();
+    return t ? "No school · " + t : "No school";
+  }
+
+  function noSchoolTodayLabel(d) {
+    const t = noSchoolTitle(d);
+    return t === "No school" ? "No school today" : t.replace(/^No school/, "No school today");
+  }
+
   function monthHTML() {
     const first = S.startOfMonth(ui.cursor);
     const gridStart = S.startOfWeek(first);
@@ -408,11 +461,21 @@
         const raw = S.getOccurrencesInRange(d, d, { hiddenCats: ui.hiddenCats });
         const group = classGroupFor(ds, raw);
         const items = foldClasses(ds, raw);
+        const noSchool = isNoSchoolDay(d);
+        const weekend = isWeekendDate(d);
         let cls = "day-cell";
         if (outside) cls += " is-outside";
         if (ds === todayStr) cls += " is-today";
+        if (noSchool) cls += " is-noschool";
+        if (weekend) cls += " is-weekend";
         html += '<div class="' + cls + '" data-act="open-day" data-date="' + ds + '">';
         html += '<div class="day-num">' + d.getDate() + "</div>";
+        if (noSchool) {
+          const br = breakOccOn(d);
+          const ns = noSchoolTitle(d);
+          if (br) html += '<button type="button" class="ns-label" data-act="open-occ" data-id="' + esc(br.id) + '">' + esc(ns) + "</button>";
+          else html += '<span class="ns-label">' + esc(ns) + "</span>";
+        }
         const open = !!(group && group.isOpen);
         const reveal = ui.revealDay === ds ? " is-reveal" : "";
         const nowMs = Date.now();
@@ -420,6 +483,7 @@
           ? [group].concat(group.children, items.filter(function (it) { return !it._inGroup; }))
           : items;
         shown.forEach(function (it) {
+          if (noSchool && isBreakOcc(it)) return;
           if (it.source === "classgroup") {
             html += '<button type="button" class="evt-pill is-group' + (it.isOpen ? " is-open" : "") + (isPastOcc(it, nowMs) ? " is-past" : "") + reveal + '" data-act="toggle-classes" data-date="' + ds + '" aria-expanded="' + (it.isOpen ? "true" : "false") + '" style="--c:' + esc(catColor(it.categoryId)) + '">' +
               '<span class="pt">Classes</span><span class="pm">' + esc(S.formatTimeRangeCompact(it.startTime, it.endTime)) + "</span></button>";
@@ -529,11 +593,18 @@
     html += '<div class="time-head"><div class="gutter"></div>';
     dayDates.forEach(function (d) {
       const ds = S.toDateStr(d);
-      html += '<div class="head-cell' + (ds === todayStr ? " is-today" : "") + '" data-act="open-day" data-date="' + ds + '">' +
+      const noSchool = isNoSchoolDay(d);
+      const weekend = isWeekendDate(d);
+      html += '<div class="head-cell' + (ds === todayStr ? " is-today" : "") + (noSchool ? " is-noschool" : "") + (weekend ? " is-weekend" : "") + '" data-act="open-day" data-date="' + ds + '">' +
         '<span class="wd">' + S.WEEKDAYS[d.getDay()] + "</span>" +
-        '<span class="dn">' + d.getDate() + "</span></div>";
+        '<span class="dn">' + d.getDate() + "</span>" +
+        (noSchool ? '<span class="ns-tag" title="' + esc(noSchoolTitle(d)) + '"><span class="ns-full">No school</span><span class="ns-short">Off</span></span>' : "") +
+        "</div>";
     });
     html += "</div>";
+    if (!isWeek && isNoSchoolDay(start)) {
+      html += '<div class="ns-banner">' + esc(noSchoolTitle(start)) + "</div>";
+    }
 
     const allDayByDay = dayDates.map(function (d) {
       return S.getOccurrencesInRange(d, d, { hiddenCats: ui.hiddenCats }).filter(function (it) { return it.allDay || !it.startTime; });
@@ -541,8 +612,9 @@
     const hasAllDay = allDayByDay.some(function (items) { return items.length; });
     if (hasAllDay) {
       html += '<div class="allday-row"><div class="gutter"></div>';
-      allDayByDay.forEach(function (items) {
-        html += '<div class="allday-cell">';
+      allDayByDay.forEach(function (items, i) {
+        const d = dayDates[i];
+        html += '<div class="allday-cell' + (isNoSchoolDay(d) ? " is-noschool" : "") + (isWeekendDate(d) ? " is-weekend" : "") + '">';
         items.forEach(function (it) {
           const taskClass = it.source === "task" ? " is-task" + (it.done ? " is-done" : "") : "";
           const past = isPastOcc(it, now.getTime()) ? " is-past" : "";
@@ -575,7 +647,7 @@
       const items = packColumns(foldClasses(ds, timed));
       const open = !!(group && group.isOpen);
       const reveal = ui.revealDay === ds ? " is-reveal" : "";
-      html += '<div class="day-col' + (open ? " has-rail" : "") + '" data-act="add-at" data-date="' + ds + '">';
+      html += '<div class="day-col' + (open ? " has-rail" : "") + (isNoSchoolDay(d) ? " is-noschool" : "") + (isWeekendDate(d) ? " is-weekend" : "") + '" data-act="add-at" data-date="' + ds + '">';
       if (ds === todayStr) {
         const nowMin = now.getHours() * 60 + now.getMinutes();
         if (nowMin >= range.start && nowMin <= range.end) {
@@ -730,6 +802,7 @@
     }).sort(compareOcc);
 
     let html = '<h2 class="panel-title">' + esc(S.formatDateNice(now)) + "</h2>";
+    if (isNoSchoolDay(now)) html += '<div class="ns-today">' + esc(noSchoolTodayLabel(now)) + "</div>";
     html += '<div class="panel-section happening"><h3>' + (happening.length ? "Now · Next up" : "Next up") + "</h3>";
     if (!happening.length && !next) html += '<p class="empty-note">Nothing coming up.</p>';
     happening.forEach(function (it) {

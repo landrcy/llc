@@ -24,6 +24,7 @@
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
   --hour-h: 68px;
+  --noschool: #3DAA6D;
   color-scheme: dark;
 }
 
@@ -1512,4 +1513,105 @@ button.gg-chip.is-done:hover { background: #E25A3C; }
 .day-col.has-rail .slot-ghost { left: 11px; }
 @media (prefers-reduced-motion: reduce) {
   .slot-ghost { transition: none; }
+}
+
+/* No-school weekdays: a soft events-green tint so days off are obvious, weekends stay quiet. */
+.day-cell.is-weekend:not(.is-noschool) {
+  background: color-mix(in srgb, var(--bg-muted) 22%, var(--bg-elev));
+}
+.day-cell.is-noschool {
+  background:
+    repeating-linear-gradient(-45deg, transparent, transparent 6px, color-mix(in srgb, var(--noschool) 8%, transparent) 6px, color-mix(in srgb, var(--noschool) 8%, transparent) 7px),
+    color-mix(in srgb, var(--noschool) 13%, var(--bg-elev));
+}
+.day-cell.is-noschool.is-outside {
+  background:
+    repeating-linear-gradient(-45deg, transparent, transparent 6px, color-mix(in srgb, var(--noschool) 6%, transparent) 6px, color-mix(in srgb, var(--noschool) 6%, transparent) 7px),
+    color-mix(in srgb, var(--noschool) 8%, var(--bg-muted));
+}
+.day-cell.is-noschool:hover {
+  background:
+    repeating-linear-gradient(-45deg, transparent, transparent 6px, color-mix(in srgb, var(--noschool) 10%, transparent) 6px, color-mix(in srgb, var(--noschool) 10%, transparent) 7px),
+    color-mix(in srgb, var(--noschool) 18%, var(--bg-elev));
+}
+.ns-label {
+  display: block;
+  width: 100%;
+  border: 0;
+  text-align: left;
+  background: color-mix(in srgb, var(--noschool) 86%, #0a1810);
+  color: #fff;
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.35;
+  min-height: 18px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+span.ns-label { cursor: default; }
+.ns-label:hover { filter: brightness(1.06); }
+
+.head-cell.is-weekend:not(.is-noschool),
+.allday-cell.is-weekend:not(.is-noschool),
+.day-col.is-weekend:not(.is-noschool) {
+  background: color-mix(in srgb, var(--bg-muted) 28%, transparent);
+}
+.head-cell.is-noschool,
+.allday-cell.is-noschool,
+.day-col.is-noschool {
+  background: color-mix(in srgb, var(--noschool) 11%, transparent);
+}
+.head-cell.is-noschool { padding-bottom: 6px; }
+.ns-tag {
+  display: block;
+  margin: 3px 2px 0;
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: color-mix(in srgb, var(--noschool) 70%, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+.ns-tag .ns-short { display: none; }
+
+.ns-banner {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 7px 12px 7px 62px;
+  background: color-mix(in srgb, var(--noschool) 14%, var(--bg-elev));
+  color: color-mix(in srgb, var(--noschool) 72%, #fff);
+  font-weight: 650;
+  font-size: 13.5px;
+  letter-spacing: 0.01em;
+  border-bottom: 1px solid color-mix(in srgb, var(--noschool) 22%, var(--line));
+}
+.time-cal.is-day .ns-banner { padding-left: 62px; }
+
+.ns-today {
+  display: inline-block;
+  margin: -4px 0 14px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--noschool) 18%, var(--bg-elev));
+  color: color-mix(in srgb, var(--noschool) 78%, #fff);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+@media (max-width: 640px) {
+  .ns-label { font-size: 9.5px; padding: 0 5px; }
+  .ns-tag .ns-full { display: none; }
+  .ns-tag .ns-short { display: inline; }
+  .ns-banner { padding-left: 42px; font-size: 12.5px; }
 }

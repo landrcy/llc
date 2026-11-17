@@ -68,3 +68,11 @@ Re-checked first: the live site loaded (200) with no console errors.
 - The browser tab title stays **llc**. The live countdown in the tab ("AMH2010 · 55 min left") was removed; the favicon is unchanged.
 
 **Tested:** headless Chromium at 1280×800, 1920×1080, 1366×768 and 390×844, on November 2026 (5 rows) and a 6-row month. The last row's bottom edge stays inside the viewport, with no console errors. No storage changes, so saved data is untouched.
+
+## Nov 17, 2026 — morning: no-school days
+
+- Weekdays with no classes (Thanksgiving, skipped holidays, and days after the fall term ends on Dec 15) now stand out in a soft events-green tint with a light hatch, plus a "No school" label. If a break event is already on that day, it becomes one pill, e.g. "No school · Thanksgiving".
+- Week view tints the column and puts a small "No school" tag in the header (a short "Off" on phones). Day view shows a "No school" banner under the date. If today is a no-school weekday, the side panel says "No school today".
+- Weekends stay visually quiet, with only a very light muted tint, so the weekday days off are what you notice. School being hidden in the filters does not mark every weekday as off.
+
+**Tested:** headless Chromium at 1280×800, 1920×1080 and 390×844. November's last week still fits on screen, day view still fits 7:30 AM–10:30 PM with no scrolling, and there were no console errors. No storage changes, so saved data is untouched.
