@@ -1444,3 +1444,39 @@ button.gg-chip.is-done:hover { background: #E25A3C; }
   .peek.is-in, .gg-chip, .gg-check { animation: none !important; }
   button.gg-chip:hover, .task-row input[type="checkbox"]:active { transform: none; }
 }
+
+/* Pass #4 — finished items in a softer tint (Google/Apple Calendar) */
+.evt-block.is-past, .evt-pill.is-past {
+  background: color-mix(in srgb, var(--c, #888) 50%, var(--bg));
+}
+.evt-block.is-past .ttl, .evt-pill.is-past { color: rgba(255, 255, 255, .78); }
+.evt-block.is-past .t, .evt-block.is-past .desc { color: rgba(255, 255, 255, .62); }
+
+/* Pass #4 — hover slot ghost in week/day (Google/Notion Calendar) */
+.slot-ghost {
+  position: absolute;
+  top: 0; left: 3px; right: 3px;
+  border-radius: 6px;
+  border: 1px dashed color-mix(in srgb, var(--ink) 38%, transparent);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transition: transform .22s var(--spring), opacity .18s ease;
+  will-change: transform, opacity;
+}
+.slot-ghost.is-on { opacity: 1; }
+.slot-ghost .sg-t {
+  display: block;
+  padding: 2px 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.day-col.has-rail .slot-ghost { left: 11px; }
+@media (prefers-reduced-motion: reduce) {
+  .slot-ghost { transition: none; }
+}

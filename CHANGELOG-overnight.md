@@ -46,3 +46,16 @@ Re-checked first: the live site loaded (200) with no console errors; the picker 
 **Polish:** A homework due time outside the 7:30 AM–10:30 PM window (e.g. 11:59 PM) used to stretch the whole week/day grid to midnight and get cut off at the bottom. It's now pinned inside the window and still labelled with its real time ("Lab report, 11:59pm"), so the grid stays 7:30 AM–10:30 PM.
 
 **Tested:** headless Chromium at 1280×800, 1920×1080 and 390×844, with and without sample homework/gym data. No console errors and no horizontal overflow. Day and week fit 7:30 AM–10:30 PM with no scrolling. The popover opens, flips, closes (Esc, outside click, arrow keys) and its actions work (Edit class opens the dialog; Mark done toggles). Classes expand and collapse, the picker and all shortcuts still work, and the home hub opens the calendar. No storage-shape changes, so saved data is untouched.
+
+## Nov 17, 2026 — pass #4 (6 AM ET)
+
+Re-checked first: the live site loaded (200) with no console errors.
+
+**Ideas taken from:** Google Calendar and Apple Calendar (finished events fade back), Google Calendar and Notion Calendar (a hover outline showing where a click will add something), and Fantastical/Structured (what's on now, visible at a glance without opening the app).
+
+**Added:**
+- **Finished items fade back.** Blocks and pills that have already ended (in month, week and day, including all-day items from earlier days) now use a softer, darker version of their colour with slightly dimmer white text, so what's still ahead stands out. They stay filled and rounded, Google Calendar-style. Open homework is never faded, even when it's overdue. Updates with the once-a-minute refresh.
+- **Hover slot in week/day.** On desktop, moving the mouse over empty space in the week or day grid shows a faint dashed 1-hour outline with its start time ("7:45pm"), snapped to 15 minutes. Clicking there opens Add event already set to that day and time (this click-to-add already existed; now you can see where it will land). It glides with a springy transform/fade, stays inside the 7:30 AM–10:30 PM frame, hides over events, when the mouse leaves, or while a dialog or preview is open, and doesn't move under reduced motion. Phones/touch don't show it.
+- **Live browser tab title.** The tab now reads "AMH2010 · 55 min left — llc" while something is on, "College Algebra in 2 hr 40 min — llc" when the next thing today is coming up, and just "llc" otherwise. It updates every minute, even when the tab is in the background. Homework and all-day items are left out.
+
+**Tested:** headless Chromium at 1280×800, 1920×1080 and 390×844 (70 checks, all passing). No console errors and no horizontal overflow in month, week or day; nothing in the top bar clipped. Day and week fit 7:30 AM–10:30 PM with no scrolling. The hover slot appears, stays in its column, hides on leave, and clicking opens Add event at the shown time. Classes expand and collapse, the popover opens and closes, the picker and shortcuts (J / T) still work, and the home hub has its five icon circles and opens the calendar. Reduced motion turns off the slot's movement. No storage changes, so saved data is untouched.

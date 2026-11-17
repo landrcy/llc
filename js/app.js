@@ -102,6 +102,13 @@
     return items.filter(function (it) { return !isClassOcc(it); }).concat([g]).sort(compareOcc);
   }
 
+  /* Google/Apple Calendar-style: anything that has already finished is shown in a softer tint. Open homework is never dimmed. */
+  function isPastOcc(it, nowMs) {
+    if (it.source === "task" && !it.done) return false;
+    if (it.allDay || !it.startTime) return it.date < S.toDateStr(new Date(nowMs));
+    return endMs(it) <= nowMs;
+  }
+
   function classSummary(g) {
     return g.children.map(function (c) { return shortTitle(c); }).join(" · ");
   }
@@ -342,6 +349,7 @@
     else if (ui.page === "personal") renderCategoryPage("personal", "cat-personal");
     else if (ui.page === "tasks") renderTasksPage();
     else if (ui.page === "settings") renderSettingsPage();
+    updateLiveTitle();
     closeSidebar();
   }
 
@@ -398,18 +406,20 @@
         const open = !!(group && group.isOpen);
         const reveal = ui.revealDay === ds ? " is-reveal" : "";
         const max = open ? 99 : 3;
+        const nowMs = Date.now();
         const shown = open
           ? [group].concat(group.children, items.filter(function (it) { return !it._inGroup; }))
           : items;
         shown.slice(0, max).forEach(function (it) {
           if (it.source === "classgroup") {
-            html += '<button type="button" class="evt-pill is-group' + (it.isOpen ? " is-open" : "") + reveal + '" data-act="toggle-classes" data-date="' + ds + '" aria-expanded="' + (it.isOpen ? "true" : "false") + '" style="--c:' + esc(catColor(it.categoryId)) + '">' +
+            html += '<button type="button" class="evt-pill is-group' + (it.isOpen ? " is-open" : "") + (isPastOcc(it, nowMs) ? " is-past" : "") + reveal + '" data-act="toggle-classes" data-date="' + ds + '" aria-expanded="' + (it.isOpen ? "true" : "false") + '" style="--c:' + esc(catColor(it.categoryId)) + '">' +
               '<span class="pt">Classes</span><span class="pm">' + esc(S.formatTimeRangeCompact(it.startTime, it.endTime)) + "</span></button>";
             return;
           }
           const taskClass = it.source === "task" ? " is-task" + (it.done ? " is-done" : "") : "";
           const child = it._inGroup ? " is-child" + reveal : "";
-          html += '<button type="button" class="evt-pill' + taskClass + child + '" data-act="open-occ" data-id="' + esc(it.id) + '" style="--c:' + esc(catColor(it.categoryId)) + '">' +
+          const past = isPastOcc(it, nowMs) ? " is-past" : "";
+          html += '<button type="button" class="evt-pill' + taskClass + child + past + '" data-act="open-occ" data-id="' + esc(it.id) + '" style="--c:' + esc(catColor(it.categoryId)) + '">' +
             esc(shortTitle(it)) + "</button>";
         });
         if (shown.length > max) {
@@ -501,7 +511,8 @@
         html += '<div class="allday-cell">';
         items.forEach(function (it) {
           const taskClass = it.source === "task" ? " is-task" + (it.done ? " is-done" : "") : "";
-          html += '<button type="button" class="evt-pill' + taskClass + '" data-act="open-occ" data-id="' + esc(it.id) + '" style="--c:' + esc(catColor(it.categoryId)) + '">' + esc(shortTitle(it)) + "</button>";
+          const past = isPastOcc(it, now.getTime()) ? " is-past" : "";
+          html += '<button type="button" class="evt-pill' + taskClass + past + '" data-act="open-occ" data-id="' + esc(it.id) + '" style="--c:' + esc(catColor(it.categoryId)) + '">' + esc(shortTitle(it)) + "</button>";
         });
         html += "</div>";
       });
@@ -570,7 +581,7 @@
         const sty = "--c:" + catColor(it.categoryId) + ";top:" + top + "%;height:calc(" + height + "% - 2px);left:calc(" + left + "% + 2px);width:calc(" + width + "% - 4px);right:auto;";
         const isGroup = it.source === "classgroup";
         const act = isGroup ? 'data-act="toggle-classes" data-date="' + ds + '" aria-expanded="false"' : 'data-act="open-occ" data-id="' + esc(it.id) + '"';
-        const extra = (detailed ? " is-detailed" : "") + (isShort ? " is-short" : "") + (isGroup ? " is-group" + reveal : "") + (it._inGroup ? " is-child" + reveal : "");
+        const extra = (detailed ? " is-detailed" : "") + (isShort ? " is-short" : "") + (isGroup ? " is-group" + reveal : "") + (it._inGroup ? " is-child" + reveal : "") + (isPastOcc(it, now.getTime()) ? " is-past" : "");
         html += '<button type="button" class="evt-block' + extra + '" ' + act + ' style="' + sty + '">';
         if (isShort) {
           html += '<span class="ttl">' + esc(shortTitle(it)) + ", " + esc(S.formatGCalTime(it.startTime)) + "</span>";
@@ -665,6 +676,25 @@
 
   function renderSidePanel() {
     document.getElementById("today-panel").innerHTML = rankedPanelHTML(true);
+  }
+
+  /* Fantastical/Structured-style: the browser tab shows what's on now (or next today), so a glance at the tab is enough. */
+  function liveTitleText() {
+    const now = new Date(), t = now.getTime();
+    const todayStr = S.toDateStr(now);
+    const timed = upcomingWindow().filter(function (it) {
+      return it.date === todayStr && !it.allDay && it.startTime && it.source !== "task";
+    });
+    const cur = timed.filter(function (it) { return startMs(it) <= t && t < endMs(it); })[0];
+    if (cur) return shortTitle(cur) + " · " + durWords(endMs(cur) - t) + " left — llc";
+    const nxt = timed.filter(function (it) { return startMs(it) > t; })[0];
+    if (nxt) return shortTitle(nxt) + " in " + durWords(startMs(nxt) - t) + " — llc";
+    return "llc";
+  }
+
+  function updateLiveTitle() {
+    const txt = liveTitleText();
+    if (document.title !== txt) document.title = txt;
   }
 
   function rankedPanelHTML(compact) {
@@ -2048,6 +2078,53 @@
     });
   }
 
+  /* Google/Notion Calendar-style hover slot: a faint 1-hour outline with its start time follows the pointer
+     over empty space in week/day, snapped to 15 minutes, showing exactly where a click will create an event. */
+  function bindSlotGhost() {
+    if (!window.matchMedia || !window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+    const board = document.getElementById("calendar-board");
+    let col = null, ghost = null, lastKey = "";
+    function hide() {
+      if (ghost) ghost.classList.remove("is-on");
+      lastKey = "";
+    }
+    board.addEventListener("pointermove", function (e) {
+      const c = e.target.closest(".day-col");
+      if (!c || e.target.closest(".evt-block, .cls-rail") || modal.open || peek.open) { hide(); return; }
+      const cal = c.closest(".time-cal");
+      const visStart = Number(cal.getAttribute("data-vis-start"));
+      const visEnd = Number(cal.getAttribute("data-vis-end"));
+      const span = Math.max(60, visEnd - visStart);
+      const rect = c.getBoundingClientRect();
+      const frac = Math.max(0, Math.min(1, (e.clientY - rect.top) / Math.max(1, rect.height)));
+      const mins = Math.max(0, Math.min(24 * 60 - 30, Math.round((visStart + frac * span) / 15) * 15));
+      const top = Math.max(visStart, Math.min(mins, visEnd - 60));
+      if (c !== col || !ghost || !c.contains(ghost)) {
+        if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+        col = c;
+        ghost = document.createElement("div");
+        ghost.className = "slot-ghost";
+        ghost.setAttribute("aria-hidden", "true");
+        ghost.innerHTML = '<span class="sg-t"></span>';
+        c.appendChild(ghost);
+        lastKey = "";
+      }
+      const h = (60 / span) * rect.height;
+      ghost.style.height = Math.max(14, h - 2) + "px";
+      const key = c.getAttribute("data-date") + mins;
+      if (key === lastKey) return;
+      lastKey = key;
+      ghost.firstChild.textContent = S.formatGCalTime(S.pad(Math.floor(mins / 60)) + ":" + S.pad(mins % 60));
+      ghost.style.transform = "translateY(" + (((top - visStart) / span) * rect.height) + "px)";
+      if (!ghost.classList.contains("is-on")) {
+        void ghost.offsetWidth;
+        ghost.classList.add("is-on");
+      }
+    });
+    board.addEventListener("pointerleave", hide);
+    board.addEventListener("pointerdown", hide);
+  }
+
   /* Keep the red now-line and the side panel's countdown live, once a minute. */
   function startLiveTick() {
     let lastMin = -1;
@@ -2055,10 +2132,12 @@
       const m = Math.floor(Date.now() / 60000);
       if (m === lastMin) return;
       lastMin = m;
+      updateLiveTitle();
       if (document.hidden || modal.open || peek.open || ui.page !== "calendar") return;
       renderCalendar();
     }, 15000);
     document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) updateLiveTitle();
       if (!document.hidden && ui.page === "calendar" && !modal.open) renderCalendar();
     });
   }
@@ -2068,6 +2147,7 @@
     applyTheme();
     ui.cursor = initialCursor();
     bind();
+    bindSlotGhost();
     render();
     startLiveTick();
     if (!S.get().onboarded) {
