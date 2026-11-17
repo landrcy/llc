@@ -1239,7 +1239,7 @@
       location: "Broward College", notes: "",
       skipDates: (S.SPRING_2027 && S.SPRING_2027.daySkips.slice()) || [], categoryId: "cat-classes"
     };
-    openModal(existing ? "Edit class" : "Add class",
+    openModal((existing && existing.id) ? "Edit class" : "Add class",
       '<div class="form-grid">' +
         field("Class name", '<input type="text" id="f-name" value="' + esc(cls.name) + '" />', true) +
         field("Short title", '<input type="text" id="f-short" value="' + esc(cls.shortName || "") + '" placeholder="Shown on the month view" />') +
@@ -1294,13 +1294,16 @@
 
   function openEventForm(existing, preset) {
     const ev = existing || {
-      title: "", categoryId: (preset && preset.categoryId) || "cat-events", date: (preset && preset.date) || S.toDateStr(ui.cursor),
-      startTime: (preset && preset.time) || "12:00", endTime: (preset && preset.end) || "13:00",
-      allDay: false, location: "", notes: "",
+      title: (preset && preset.title) || "",
+      categoryId: (preset && preset.categoryId) || "cat-events",
+      date: (preset && preset.date) || S.toDateStr(ui.cursor),
+      startTime: (preset && (preset.time || preset.startTime)) || (preset && preset.allDay ? "" : "12:00"),
+      endTime: (preset && (preset.end || preset.endTime)) || (preset && preset.allDay ? "" : "13:00"),
+      allDay: !!(preset && preset.allDay), location: (preset && preset.location) || "", notes: "",
       recurrence: null, skipDates: []
     };
     const rec = ev.recurrence || { freq: "none", days: ev.date ? [S.parseDateStr(ev.date).getDay()] : [], until: "", skipDates: [] };
-    openModal(existing ? "Edit event" : "Add event",
+    openModal((existing && existing.id) ? "Edit event" : "Add event",
       '<div class="form-grid">' +
         field("Title", '<input type="text" id="f-name" value="' + esc(ev.title) + '" />', true) +
         field("Category", categorySelect("f-cat", ev.categoryId || "cat-events")) +
@@ -1368,11 +1371,12 @@
     const opts = '<option value="">No class</option>' + S.get().classes.map(function (c) {
       return '<option value="' + esc(c.id) + '"' + (c.id === t.classId ? " selected" : "") + ">" + esc(c.name) + "</option>";
     }).join("");
-    openModal(existing ? "Edit homework" : "Add homework",
+    openModal((existing && existing.id) ? "Edit homework" : "Add homework",
       '<div class="form-grid">' +
         field("Title", '<input type="text" id="f-name" value="' + esc(t.title) + '" />', true) +
         field("Class", '<select id="f-class">' + opts + "</select>", true) +
         field("Due date", '<input type="date" id="f-date" value="' + esc(t.dueDate || "") + '" />') +
+        field("Due time", '<input type="time" id="f-time" value="' + esc(t.dueTime || "") + '" />') +
         (existing ? '<label class="field check-row span-2" style="flex-direction:row;align-items:center"><input type="checkbox" id="f-done"' + (t.done ? " checked" : "") + " /> Done</label>" : "") +
       "</div>",
       '<button class="ghost-btn" type="button" data-act="close-modal">Cancel</button>' +
@@ -1389,7 +1393,7 @@
       title: title,
       classId: val("f-class") || "",
       dueDate: val("f-date"),
-      dueTime: "",
+      dueTime: val("f-time"),
       notes: "",
       categoryId: "cat-classes",
       done: false
@@ -1513,7 +1517,177 @@
     return '<svg class="spark" viewBox="0 0 ' + w + " " + h + '" preserveAspectRatio="none"><polyline fill="none" stroke="currentColor" stroke-width="2" points="' + pts + '" /></svg>';
   }
 
+  const qa = { open: false, timer: 0 };
+
+  function qaNow() { return new Date(); }
+
+  function parseQuick(text) {
+    const api = window.LLCQuickAdd;
+    if (!api || !api.parse) return { ok: false, preview: "" };
+    return api.parse(text, qaNow());
+  }
+
+  function paintQuickAdd() {
+    const el = document.getElementById("quick-add");
+    if (!el || el.hidden) return;
+    const input = document.getElementById("qa-input");
+    const parsed = parseQuick(input.value);
+    const line = document.getElementById("qa-line");
+    const sw = document.getElementById("qa-sw");
+    const preview = document.getElementById("qa-preview");
+    line.textContent = parsed.preview || "";
+    sw.style.setProperty("--c", parsed.ok ? catColor(parsed.categoryId) : "#888");
+    preview.classList.toggle("is-empty", !parsed.ok);
+  }
+
+  function openQuickAdd(seed) {
+    closePicker();
+    closePeek();
+    const el = document.getElementById("quick-add");
+    const back = document.getElementById("qa-back");
+    if (!el) return;
+    qa.open = true;
+    el.hidden = false;
+    back.hidden = false;
+    el.classList.remove("is-out", "is-saved");
+    void el.offsetWidth;
+    el.classList.add("is-in");
+    const input = document.getElementById("qa-input");
+    input.value = seed || "";
+    paintQuickAdd();
+    setTimeout(function () { input.focus(); input.select(); }, 20);
+  }
+
+  function closeQuickAdd(anim) {
+    if (!qa.open) return;
+    const el = document.getElementById("quick-add");
+    const back = document.getElementById("qa-back");
+    qa.open = false;
+    function hide() {
+      el.hidden = true;
+      back.hidden = true;
+      el.classList.remove("is-in", "is-out", "is-saved");
+      document.getElementById("qa-input").value = "";
+    }
+    if (anim === false || (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+      hide();
+      return;
+    }
+    el.classList.remove("is-in");
+    el.classList.add(anim === "saved" ? "is-saved" : "is-out");
+    clearTimeout(qa.timer);
+    qa.timer = setTimeout(hide, anim === "saved" ? 380 : 200);
+  }
+
+  function saveQuickAdd() {
+    const parsed = parseQuick(document.getElementById("qa-input").value);
+    if (!parsed.ok) return toast("Type something to add.");
+    if (parsed.kind === "gym") {
+      if (!parsed.gymSession) return toast("Pick Push, Pull, Legs or Bonus.");
+      const d = S.parseDateStr(parsed.date);
+      if (!d || d.getDay() === 0 || d.getDay() === 6) return toast("Gym is weekdays only.");
+      const key = S.toDateStr(S.startOfGymWeek(d));
+      S.update(function (data) {
+        const plan = ensureGymPlan(data);
+        const week = plan.weeks[key] || {};
+        week[parsed.gymSession] = {
+          date: parsed.date,
+          startTime: parsed.startTime || "",
+          endTime: parsed.endTime || ""
+        };
+        plan.weeks[key] = week;
+      });
+      closeQuickAdd("saved");
+      toast("Planned " + parsed.gymSession + ".");
+      render();
+      return;
+    }
+    if (parsed.kind === "task") {
+      S.update(function (data) {
+        data.tasks.push({
+          id: S.uid(),
+          title: parsed.title,
+          classId: "",
+          dueDate: parsed.date,
+          dueTime: parsed.allDay ? "" : (parsed.startTime || ""),
+          notes: "",
+          categoryId: "cat-classes",
+          done: false
+        });
+      });
+      closeQuickAdd("saved");
+      toast("Homework saved.");
+      render();
+      return;
+    }
+    S.update(function (data) {
+      data.events.push({
+        id: S.uid(),
+        title: parsed.title,
+        categoryId: parsed.categoryId || "cat-events",
+        date: parsed.date,
+        startTime: parsed.allDay ? "" : (parsed.startTime || ""),
+        endTime: parsed.allDay ? "" : (parsed.endTime || ""),
+        allDay: !!parsed.allDay,
+        location: "",
+        notes: "",
+        recurrence: null,
+        skipDates: []
+      });
+    });
+    closeQuickAdd("saved");
+    toast("Event saved.");
+    render();
+  }
+
+  function editQuickAdd() {
+    const parsed = parseQuick(document.getElementById("qa-input").value);
+    closeQuickAdd(false);
+    if (parsed.kind === "task") {
+      openTaskForm({
+        title: parsed.ok ? parsed.title : document.getElementById("qa-input").value,
+        classId: "",
+        dueDate: parsed.date || S.toDateStr(ui.cursor),
+        dueTime: parsed.allDay ? "" : (parsed.startTime || ""),
+        notes: "",
+        done: false,
+        categoryId: "cat-classes"
+      });
+      return;
+    }
+    if (parsed.kind === "gym" && parsed.gymSession) {
+      const d = parsed.date;
+      const dow = S.parseDateStr(d) && S.parseDateStr(d).getDay();
+      if (dow !== 0 && dow !== 6) {
+        const key = S.toDateStr(S.startOfGymWeek(d));
+        S.update(function (data) {
+          const plan = ensureGymPlan(data);
+          const week = plan.weeks[key] || {};
+          if (!week[parsed.gymSession]) {
+            week[parsed.gymSession] = { date: d, startTime: parsed.startTime || "", endTime: parsed.endTime || "" };
+            plan.weeks[key] = week;
+          }
+        });
+        openGymSlotEditor(parsed.gymSession, d);
+        return;
+      }
+    }
+    openEventForm(null, {
+      title: parsed.ok ? parsed.title : document.getElementById("qa-input").value,
+      categoryId: parsed.categoryId || "cat-events",
+      date: parsed.date || S.toDateStr(ui.cursor),
+      time: parsed.allDay ? "" : (parsed.startTime || "12:00"),
+      end: parsed.allDay ? "" : (parsed.endTime || "13:00"),
+      allDay: !!parsed.allDay
+    });
+  }
+
   function openAddChooser() {
+    openQuickAdd();
+  }
+
+  function openAddMore() {
+    closeQuickAdd(false);
     openModal("Add",
       '<div class="onboard-actions">' +
         '<button class="primary-btn" type="button" data-act="add-event">Event</button>' +
@@ -2110,6 +2284,14 @@
     });
     document.getElementById("home-btn").addEventListener("click", function () { ui.page = "home"; render(); });
     document.getElementById("add-btn").addEventListener("click", openAddChooser);
+    document.getElementById("qa-input").addEventListener("input", paintQuickAdd);
+    document.getElementById("qa-input").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); saveQuickAdd(); }
+      if (e.key === "Escape") { e.preventDefault(); closeQuickAdd(); }
+    });
+    document.getElementById("qa-edit").addEventListener("click", editQuickAdd);
+    document.getElementById("qa-more").addEventListener("click", openAddMore);
+    document.getElementById("qa-back").addEventListener("click", function () { closeQuickAdd(); });
     document.getElementById("menu-btn").addEventListener("click", function () {
       ui.sidebarOpen = !ui.sidebarOpen;
       document.getElementById("sidebar").classList.toggle("is-open", ui.sidebarOpen);
@@ -2149,7 +2331,9 @@
     /* Keyboard shortcuts (Google Calendar / Notion Calendar style). */
     document.addEventListener("keydown", function (e) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (qa.open && e.key === "Escape") { e.preventDefault(); closeQuickAdd(); return; }
       if (e.target && (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable)) return;
+      if (qa.open) return;
       if (modal.open) return;
       if (picker.open && e.key === "Escape") { closePicker(); return; }
       if (peek.open && e.key === "Escape") { closePeek(); return; }
@@ -2163,7 +2347,7 @@
       else if (onCal && (k === "ArrowLeft" || k === "k" || k === "p")) shiftPeriod(-1);
       else if (onCal && (k === "ArrowRight" || k === "j" || k === "n")) shiftPeriod(1);
       else if (onCal && k === "g") { if (picker.open) closePicker(); else openPicker(); }
-      else if (k === "c" && ui.page !== "home") openAddChooser();
+      else if (k === "c" || k === "/") openQuickAdd();
       else hit = false;
       if (hit) e.preventDefault();
     });

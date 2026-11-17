@@ -76,3 +76,11 @@ Re-checked first: the live site loaded (200) with no console errors.
 - Weekends stay visually quiet, with only a very light muted tint, so the weekday days off are what you notice. School being hidden in the filters does not mark every weekday as off.
 
 **Tested:** headless Chromium at 1280×800, 1920×1080 and 390×844. November's last week still fits on screen, day view still fits 7:30 AM–10:30 PM with no scrolling, and there were no console errors. No storage changes, so saved data is untouched.
+
+## Nov 17, 2026 — morning: type to add
+
+- Press **C** or **/**, or click **Add**, to open a small quick-add field. Type naturally, e.g. "chem quiz fri 2pm", "gym push wed 5pm", "essay due thu 11:59pm", "dentist nov 20 3-4pm", "movie tomorrow 8pm", or "study 2-3:30 today".
+- A live preview under the input shows the date, time and category in that category's colour (e.g. "Fri, Nov 20 · 2:00–3:00 PM · School"). Enter saves with a short springy animation; Esc closes; **Edit details** opens the full form already filled in. **More** still has Event, Class, Homework and Workout log.
+- Dates understand today, tomorrow, weekday names (the next one), "nov 20" and "11/20". Times can be am/pm, 24-hour, noon, or a range; a missing end time is one hour later. "due" (and quiz, essay, homework, and similar words) creates homework; gym/push/pull/legs/bonus plans a gym session; dentist, doctor, haircut and call go under Personal; everything else is an Event.
+
+**Tested:** parser unit checks with today = Tuesday, Nov 17, 2026, plus headless Chromium at 1280×800 and 390×844. Month view still fits, day view still fits 7:30 AM–10:30 PM with no scrolling, and there were no console errors. No storage-shape changes, so saved data is untouched.
