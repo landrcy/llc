@@ -336,13 +336,15 @@ img, svg { display: block; }
 }
 .agenda-item .meta, .occ-row .meta { min-width: 0; flex: 1; }
 .agenda-item .title, .occ-row .title {
+  display: block;
   font-weight: 600;
   font-size: 13.5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.agenda-item .sub, .occ-row .sub, .muted { color: var(--muted); font-size: 12.5px; }
+.agenda-item .sub, .occ-row .sub { display: block; color: var(--muted); font-size: 12.5px; }
+.muted { color: var(--muted); font-size: 12.5px; }
 .empty-note {
   color: var(--muted);
   font-size: 13.5px;
